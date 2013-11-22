@@ -835,6 +835,12 @@ SYSCALL_DEFINE0(getppid)
 	return pid;
 }
 
+SYSCALL_DEFINE0(foo)
+{
+  /* Test syscall implementation. */
+  return 1337;
+}
+
 SYSCALL_DEFINE0(getuid)
 {
 	/* Only we change this so SMP safe */
