@@ -5,7 +5,7 @@ How to use the helloKernel kernel module:
 
 2) Load your kernel module into the currently running kernel. Run
 
-$ insmod helloKernel.ko
+$ insmod hello.ko
 
 3) This is the exciting step. Probably nothing has happened just yet, because helloKernel prints to the kernel log buffer. To check on that, run
 
@@ -15,6 +15,6 @@ and check to see if the "Hello, kernel!" message appears.
 
 4) Unloading the module is also easy, just run
 
-$ rmmod helloKernel
+$ rmmod hello
 
 You can check to see if it's been unloaded by doing step 3 again and looking for the "Cleaning up hello kernel module!" message.
