@@ -110,6 +110,7 @@ struct cred {
 #endif
 	kuid_t		uid;		/* real UID of the task */
 	kgid_t		gid;		/* real GID of the task */
+	knid_t		nid;		/* real NID of the task */
 	kuid_t		suid;		/* saved UID of the task */
 	kgid_t		sgid;		/* saved GID of the task */
 	kuid_t		euid;		/* effective UID of the task */
