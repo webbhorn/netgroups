@@ -1,0 +1,20 @@
+How to use the helloKernel kernel module:
+(taken from http://www.linuxchix.org/content/courses/kernel_hacking/lesson8 but in many places on the net)
+
+1) Run make from this helloKernel folder as root. It'll use the Makefile in the folder.
+
+2) Load your kernel module into the currently running kernel. Run
+
+$ insmod helloKernel.ko
+
+3) This is the exciting step. Probably nothing has happened just yet, because helloKernel prints to the kernel log buffer. To check on that, run
+
+$ dmesg | tail
+
+and check to see if the "Hello, kernel!" message appears.
+
+4) Unloading the module is also easy, just run
+
+$ rmmod helloKernel
+
+You can check to see if it's been unloaded by doing step 3 again and looking for the "Cleaning up hello kernel module!" message.
