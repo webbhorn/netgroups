@@ -1,9 +1,9 @@
 #include <stdio.h>
-#include <unistd.h>
-#include <sys/syscall.h>
+#include <stdio.h>
+#include "nid.h"
 
 int main() {
-  int nid = syscall(__NR_getnids);
+  int nid = getnids();
   printf("%d\n", nid);
   
   return 0;
