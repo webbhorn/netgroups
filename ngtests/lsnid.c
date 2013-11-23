@@ -3,7 +3,7 @@
 #include <sys/syscall.h>
 
 int main() {
-  int nid = syscall(__NR_foo);
+  int nid = syscall(__NR_getnids);
   printf("%d\n", nid);
   
   return 0;
