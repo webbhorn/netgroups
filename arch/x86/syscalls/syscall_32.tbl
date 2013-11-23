@@ -358,4 +358,4 @@
 349	i386	kcmp			sys_kcmp
 350	i386	finit_module		sys_finit_module
 
-351 i386  foo sys_foo
+351 i386  getnids sys_getnids

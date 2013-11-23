@@ -835,10 +835,11 @@ SYSCALL_DEFINE0(getppid)
 	return pid;
 }
 
-SYSCALL_DEFINE0(foo)
+SYSCALL_DEFINE0(getnids)
 {
   /* Test syscall implementation. */
-  return 1337;
+	const struct cred *old = current_cred();
+  return old->nid;
 }
 
 SYSCALL_DEFINE0(getuid)
