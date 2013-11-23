@@ -3,8 +3,9 @@
 #include "nid.h"
 
 int main() {
-  int nid = getnids();
-  printf("%d\n", nid);
+
+  int ret_nid = getnids();
+  printf("getnid: %d\n", ret_nid);
   
   return 0;
 }

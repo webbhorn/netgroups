@@ -1,6 +1,8 @@
 #ifndef NID_H
 #define NID_H
 
+#include <stdint.h>
+
 /*
  * Define syscall stubs.
  *
@@ -8,7 +10,10 @@
  * own stubs.
  */
 
+typedef uint32_t nid_t;
+
 long getnids(void);  /* Return nids of calling process. */
+long setnids(nid_t nid);  /* Set nid of calling process to nid. */
 
 #endif
 

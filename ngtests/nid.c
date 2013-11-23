@@ -11,3 +11,6 @@ long getnids(void) {
   return syscall(__NR_getnids);
 }
 
+long setnids(nid_t nid) {
+  return syscall(__NR_setnids, nid);
+}
