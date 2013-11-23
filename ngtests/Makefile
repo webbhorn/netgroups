@@ -1,5 +1,13 @@
-lsnid:
-	gcc lsnid.c nid.c -o lsnid
+all: lsnid
+
+lsnid: lsnid.o nid.o
+	gcc lsnid.o nid.o -o lsnid
+
+lsnid.o: lsnid.c
+	gcc -c lsnid.c
+
+nid.o: nid.c
+	gcc -c nid.c
 
 clean:
-	rm -rf lsnid
+	rm -rf *.o lsnid
