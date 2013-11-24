@@ -279,3 +279,118 @@ int in_egroup_p(kgid_t grp)
 }
 
 EXPORT_SYMBOL(in_egroup_p);
+
+
+
+
+
+
+/*
+ * netgroups code. basically a copy of supplementary groups functions.
+ */
+
+/**
+ * set_current_netgroups - Change current's netgroup subscription
+ * @group_info: The group list to impose
+ *
+ * Validate a netgroup subscription and, if valid, impose it upon current's task
+ * security record.
+ */
+int set_current_netgroups(struct group_info *group_info)
+{
+	struct cred *new;
+	int ret;
+
+	new = prepare_creds();
+	if (!new)
+		return -ENOMEM;
+
+	ret = set_netgroups(new, group_info);
+	if (ret < 0) {
+		abort_creds(new);
+		return ret;
+	}
+
+	return commit_creds(new);
+}
+
+EXPORT_SYMBOL(set_current_netgroups);
+
+/**
+ * set_netgroups - Change a netgroup subscription in a set of credentials
+ * @new: The newly prepared set of credentials to alter
+ * @group_info: The netgroup list to install
+ *
+ * Validate a netgroup subscription and, if valid, insert it into a set
+ * of credentials.
+ */
+int set_netgroups(struct cred *new, struct group_info *group_info)
+{
+	put_group_info(new->group_info);
+	groups_sort(group_info);
+	get_group_info(group_info);
+	new->netgroup_info = group_info;
+	return 0;
+}
+
+EXPORT_SYMBOL(set_netgroups);
+
+
+SYSCALL_DEFINE2(getnetgroups, int, nidsetsize, gid_t __user *, netgrouplist)
+{
+	const struct cred *cred = current_cred();
+	int i;
+
+	if (nidsetsize < 0)
+		return -EINVAL;
+
+	/* no need to grab task_lock here; it cannot change */
+	i = cred->netgroup_info->ngroups;
+	if (nidsetsize) {
+		if (i > nidsetsize) {
+			i = -EINVAL;
+			goto out;
+		}
+		if (groups_to_user(netgrouplist, cred->netgroup_info)) {
+			i = -EFAULT;
+			goto out;
+		}
+	}
+out:
+	return i;
+}
+
+/*
+ *	SMP: Our groups are copy-on-write. We can set them safely
+ *	without another task interfering.
+ *
+ *	TODO: The SMP comment above might be lying.
+ *	TODO: Do we need to lock here?
+ */
+
+SYSCALL_DEFINE1(addnid, gid_t, nid)
+{
+  int i;
+  int retval = 0;
+  struct group_info *group_info;
+  struct cred *current = current_cred();
+  int n = current->group_info->ngroups;
+
+  if ((unsigned)n >= NGROUPS_MAX)
+    return -EINVAL;
+
+  group_info = groups_alloc(n+1);
+  if (!group_info)
+    return -ENOMEM;
+
+  for (i = 0; i < n; i++) {
+    GROUP_AT(group_info, i) = GROUP_AT(group_info, i);
+  }
+  GROUP_AT(group_info, n) = nid;
+
+  set_current_netgroups(group_info);
+  put_group_info(group_info);
+
+  return retval;
+}
+

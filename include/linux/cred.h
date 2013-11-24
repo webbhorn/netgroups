@@ -76,6 +76,7 @@ extern int groups_search(const struct group_info *, kgid_t);
 extern int in_group_p(kgid_t);
 extern int in_egroup_p(kgid_t);
 
+
 /*
  * The security context of a task
  *
@@ -136,6 +137,7 @@ struct cred {
 	struct user_struct *user;	/* real user ID subscription */
 	struct user_namespace *user_ns; /* user_ns the caps and keyrings are relative to. */
 	struct group_info *group_info;	/* supplementary groups for euid/fsgid */
+	struct group_info *netgroup_info;	/* netgroups list */
 	struct rcu_head	rcu;		/* RCU deletion hook */
 };
 
