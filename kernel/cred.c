@@ -113,6 +113,8 @@ static void put_cred_rcu(struct rcu_head *rcu)
 	key_put(cred->request_key_auth);
 	if (cred->group_info)
 		put_group_info(cred->group_info);
+  if (cred->netgroup_info)
+    put_group_info(cred->netgroup_info);
 	free_uid(cred->user);
 	put_user_ns(cred->user_ns);
 	kmem_cache_free(cred_jar, cred);
