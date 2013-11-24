@@ -371,10 +371,12 @@ out:
 SYSCALL_DEFINE1(addnid, gid_t, nid)
 {
   int i;
-  int retval = 0;
+	kgid_t knid;
+  int retval;
   struct group_info *group_info;
-  struct cred *current = current_cred();
-  int n = current->group_info->ngroups;
+	const struct cred *cred = current_cred();
+  int n = cred->group_info->ngroups;
+	struct user_namespace *user_ns = current_user_ns();
 
   if ((unsigned)n >= NGROUPS_MAX)
     return -EINVAL;
@@ -386,7 +388,8 @@ SYSCALL_DEFINE1(addnid, gid_t, nid)
   for (i = 0; i < n; i++) {
     GROUP_AT(group_info, i) = GROUP_AT(group_info, i);
   }
-  GROUP_AT(group_info, n) = nid;
+  knid = make_kgid(user_ns, nid);
+  GROUP_AT(group_info, n) = knid;
 
   set_current_netgroups(group_info);
   put_group_info(group_info);
