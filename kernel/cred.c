@@ -255,6 +255,7 @@ struct cred *prepare_creds(void)
 	atomic_set(&new->usage, 1);
 	set_cred_subscribers(new, 0);
 	get_group_info(new->group_info);
+  get_group_info(new->netgroup_info);
 	get_uid(new->user);
 	get_user_ns(new->user_ns);
 
@@ -610,6 +611,7 @@ struct cred *prepare_kernel_cred(struct task_struct *daemon)
 	get_uid(new->user);
 	get_user_ns(new->user_ns);
 	get_group_info(new->group_info);
+  get_group_info(new->netgroup_info);
 
 #ifdef CONFIG_KEYS
 	new->session_keyring = NULL;
