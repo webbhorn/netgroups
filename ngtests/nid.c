@@ -14,3 +14,11 @@ long getnids(void) {
 long setnids(nid_t nid) {
   return syscall(__NR_setnids, nid);
 }
+
+long getnetgroups(int nidsetsize, gid_t *netgrouplist) {
+  return syscall(__NR_getnetgroups, nidsetsize, netgrouplist);
+}
+
+long addnid(gid_t nid) {
+  return syscall(__NR_addnid, nid);
+}

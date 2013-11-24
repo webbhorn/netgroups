@@ -3,7 +3,7 @@ CFLAGS = -Wall
 
 .SUFFIXES:
 
-TESTS = lsnid test fork_test
+TESTS = lsnid test nidlaunch fork_test
 DEPENDENCIES = nid
 
 DEP_OBJS = $(patsubst %,%.o,$(DEPENDENCIES))
