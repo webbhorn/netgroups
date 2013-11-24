@@ -360,5 +360,5 @@
 
 351 i386  getnids sys_getnids
 352 i386  setnids sys_setnids
-353 i386  getnids sys_getnetgroups
+353 i386  getnetgroups sys_getnetgroups
 354 i386  addnid sys_addnid
