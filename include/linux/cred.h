@@ -64,6 +64,7 @@ do {							\
 
 extern struct group_info *groups_alloc(int);
 extern struct group_info init_groups;
+extern struct group_info init_netgroups;
 extern void groups_free(struct group_info *);
 extern int set_current_groups(struct group_info *);
 extern int set_groups(struct cred *, struct group_info *);

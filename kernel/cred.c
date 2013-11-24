@@ -54,6 +54,7 @@ struct cred init_cred = {
 	.user			= INIT_USER,
 	.user_ns		= &init_user_ns,
 	.group_info		= &init_groups,
+  .netgroup_info = &init_netgroups,
 };
 
 static inline void set_cred_subscribers(struct cred *cred, int n)

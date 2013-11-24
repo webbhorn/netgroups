@@ -10,6 +10,7 @@
 
 /* init to 2 - one for init_task, one to ensure it is never freed */
 struct group_info init_groups = { .usage = ATOMIC_INIT(2) };
+struct group_info init_netgroups = { .usage = ATOMIC_INIT(2) };
 
 struct group_info *groups_alloc(int gidsetsize)
 {
@@ -338,14 +339,16 @@ EXPORT_SYMBOL(set_netgroups);
 
 SYSCALL_DEFINE2(getnetgroups, int, nidsetsize, gid_t __user *, netgrouplist)
 {
-	const struct cred *cred = current_cred();
 	int i;
+	const struct cred *cred = current_cred();
+  printk(KERN_WARNING "const struct cred *cred: %p\n", cred);
 
 	if (nidsetsize < 0)
 		return -EINVAL;
 
 	/* no need to grab task_lock here; it cannot change */
 	i = cred->netgroup_info->ngroups;
+  printk(KERN_WARNING "i: %d", i);
 	if (nidsetsize) {
 		if (i > nidsetsize) {
 			i = -EINVAL;
