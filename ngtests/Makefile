@@ -1,19 +1,21 @@
-all: lsnid tests
+CC = /usr/bin/gcc
+CFLAGS = -Wall
 
-lsnid: lsnid.o nid.o
-	gcc lsnid.o nid.o -o lsnid
+.SUFFIXES:
 
-tests: test.o nid.o
-	gcc test.o nid.o -o test
+TESTS = lsnid test fork_test
+DEPENDENCIES = nid
 
-lsnid.o: lsnid.c
-	gcc -c lsnid.c
+DEP_OBJS = $(patsubst %,%.o,$(DEPENDENCIES))
 
-test.o: test.c
-	gcc -c test.c
+all: $(TESTS)
 
-nid.o: nid.c
-	gcc -c nid.c
+%.o : %.c
+	$(CC) -c $(CFLAGS) $< -o $@
+
+
+% : %.o $(DEP_OBJS)
+	$(CC) $< $(DEP_OBJS) -o $@
 
 clean:
-	rm -rf *.o lsnid test
+	rm -rf *.o $(TESTS)
