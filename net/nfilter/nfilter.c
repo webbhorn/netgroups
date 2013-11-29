@@ -15,7 +15,7 @@ unsigned int hook_function(unsigned int hooknum,
 {
 	if (!printed)
 	{
-	  	printed = true;
+		printed = true;
 		printk(KERN_INFO "Received packet(s) in hook function...Hello, world!\n");
 	}
 
