@@ -327,7 +327,7 @@ EXPORT_SYMBOL(set_current_netgroups);
  */
 int set_netgroups(struct cred *new, struct group_info *group_info)
 {
-	put_group_info(new->group_info);
+	put_group_info(new->netgroup_info);
 	groups_sort(group_info);
 	get_group_info(group_info);
 	new->netgroup_info = group_info;
