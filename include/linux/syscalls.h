@@ -848,8 +848,7 @@ asmlinkage long sys_kcmp(pid_t pid1, pid_t pid2, int type,
 			 unsigned long idx1, unsigned long idx2);
 asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
 
-asmlinkage long sys_getnids(void);
-asmlinkage long sys_setnids(nid_t nid);
-asmlinkage long sys_getnetgroups(int nidsetsize, gid_t __user *grouplist);
+asmlinkage long sys_getrnid(void);
+asmlinkage long sys_getnids(int nidsetsize, gid_t __user *grouplist);
 asmlinkage long sys_addnid(gid_t nid);
 #endif

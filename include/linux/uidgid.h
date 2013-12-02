@@ -17,12 +17,6 @@
 struct user_namespace;
 extern struct user_namespace init_user_ns;
 
-/* Set nid definition here.
- * TODO: Define the type like uids and gids are
- */
-typedef uint32_t nid_t;
-typedef nid_t knid_t;
-
 #ifdef CONFIG_UIDGID_STRICT_TYPE_CHECKS
 
 typedef struct {

@@ -6,11 +6,11 @@
 int main() {
 
   int i;
-  long ret_nid = getnids();
+  long ret_nid = getrnid();
   printf("%lu\n", ret_nid);
 
   gid_t grps[32] = {0};
-  long nngroups = getnetgroups(32, grps);
+  long nngroups = getnids(32, grps);
 
   for (i=0; i < nngroups; i++)
     printf("%i ", (int)grps[i]);
@@ -19,3 +19,4 @@ int main() {
 
   return 0;
 }
+

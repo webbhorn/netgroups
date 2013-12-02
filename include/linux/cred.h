@@ -64,12 +64,12 @@ do {							\
 
 extern struct group_info *groups_alloc(int);
 extern struct group_info init_groups;
-extern struct group_info init_netgroups;
 extern void groups_free(struct group_info *);
 extern int set_current_groups(struct group_info *);
 extern int set_groups(struct cred *, struct group_info *);
 extern int groups_search(const struct group_info *, kgid_t);
 
+extern struct group_info init_netgroups;
 extern int set_current_netgroups(struct group_info *);
 extern int set_netgroups(struct cred *, struct group_info *);
 
@@ -79,7 +79,6 @@ extern int set_netgroups(struct cred *, struct group_info *);
 
 extern int in_group_p(kgid_t);
 extern int in_egroup_p(kgid_t);
-
 
 /*
  * The security context of a task
@@ -115,7 +114,7 @@ struct cred {
 #endif
 	kuid_t		uid;		/* real UID of the task */
 	kgid_t		gid;		/* real GID of the task */
-	knid_t		nid;		/* real NID of the task */
+	kgid_t		nid;		/* real NID of the task */
 	kuid_t		suid;		/* saved UID of the task */
 	kgid_t		sgid;		/* saved GID of the task */
 	kuid_t		euid;		/* effective UID of the task */
@@ -141,7 +140,7 @@ struct cred {
 	struct user_struct *user;	/* real user ID subscription */
 	struct user_namespace *user_ns; /* user_ns the caps and keyrings are relative to. */
 	struct group_info *group_info;	/* supplementary groups for euid/fsgid */
-	struct group_info *netgroup_info;	/* netgroups list */
+	struct group_info *netgroup_info; /* netgroups list */
 	struct rcu_head	rcu;		/* RCU deletion hook */
 };
 

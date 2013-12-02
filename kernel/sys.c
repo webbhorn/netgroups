@@ -835,28 +835,10 @@ SYSCALL_DEFINE0(getppid)
 	return pid;
 }
 
-SYSCALL_DEFINE0(getnids)
+SYSCALL_DEFINE0(getrnid)
 {
 	const struct cred *old = current_cred();
-  return old->nid;
-}
-
-SYSCALL_DEFINE1(setnids, nid_t, nid)
-{
-  const struct cred *old;
-  struct cred *new;
-  int retval;
-
-  new = prepare_creds();
-  if (!new)
-    return -ENOMEM;
-  old = current_cred();
-
-  /* TODO: Check permissions on setting an nid. */
-  retval = -EPERM;
-  new->nid = nid;
-
-  return commit_creds(new);
+	return old->nid;
 }
 
 SYSCALL_DEFINE0(getuid)

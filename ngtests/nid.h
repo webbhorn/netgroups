@@ -11,12 +11,13 @@
  * own stubs.
  */
 
-typedef uint32_t nid_t;
+/* Return real nid of calling process. */
+long getrnid(void);
 
-long getnids(void);  /* Return nids of calling process. */
-long setnids(nid_t nid);  /* Set nid of calling process to nid. */
+/* Copy at most nidsetsize of calling process's NIDs into netgrouplist. */
+long getnids(int nidsetsize, gid_t *netgrouplist);
 
-long getnetgroups(int nidsetsize, gid_t *netgrouplist);
+/* Add nid to calling process's list of nids. */
 long addnid(gid_t nid);
 
 #endif

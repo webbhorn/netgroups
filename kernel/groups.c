@@ -282,10 +282,6 @@ int in_egroup_p(kgid_t grp)
 EXPORT_SYMBOL(in_egroup_p);
 
 
-
-
-
-
 /*
  * netgroups code. basically a copy of supplementary groups functions.
  */
@@ -294,8 +290,8 @@ EXPORT_SYMBOL(in_egroup_p);
  * set_current_netgroups - Change current's netgroup subscription
  * @group_info: The group list to impose
  *
- * Validate a netgroup subscription and, if valid, impose it upon current's task
- * security record.
+ * Validate a netgroup subscription and, if valid, impose it upon current's
+ * task security record.
  */
 int set_current_netgroups(struct group_info *group_info)
 {
@@ -325,30 +321,28 @@ EXPORT_SYMBOL(set_current_netgroups);
  * Validate a netgroup subscription and, if valid, insert it into a set
  * of credentials.
  */
-int set_netgroups(struct cred *new, struct group_info *group_info)
+int set_netgroups(struct cred *new, struct group_info *netgroup_info)
 {
 	put_group_info(new->netgroup_info);
-	groups_sort(group_info);
-	get_group_info(group_info);
-	new->netgroup_info = group_info;
+	groups_sort(netgroup_info);
+	get_group_info(netgroup_info);
+	new->netgroup_info = netgroup_info;
 	return 0;
 }
 
 EXPORT_SYMBOL(set_netgroups);
 
 
-SYSCALL_DEFINE2(getnetgroups, int, nidsetsize, gid_t __user *, netgrouplist)
+SYSCALL_DEFINE2(getnids, int, nidsetsize, gid_t __user *, netgrouplist)
 {
 	int i;
 	const struct cred *cred = current_cred();
-  printk(KERN_WARNING "const struct cred *cred: %p\n", cred);
 
 	if (nidsetsize < 0)
 		return -EINVAL;
 
 	/* no need to grab task_lock here; it cannot change */
 	i = cred->netgroup_info->ngroups;
-  printk(KERN_WARNING "i: %d", i);
 	if (nidsetsize) {
 		if (i > nidsetsize) {
 			i = -EINVAL;
@@ -366,47 +360,36 @@ out:
 /*
  *	SMP: Our groups are copy-on-write. We can set them safely
  *	without another task interfering.
- *
- *	TODO: The SMP comment above might be lying.
- *	TODO: Do we need to lock here?
  */
-
 SYSCALL_DEFINE1(addnid, gid_t, nid)
 {
-  int i;
-  int n;
+	int i;
+	int n;
 	kgid_t knid;
-  struct user_namespace *user_ns;
-  struct group_info *group_info;
+	struct user_namespace *user_ns;
+	struct group_info *group_info;
 	const struct cred *cred;
 
-  cred = current_cred();
-  n = cred->netgroup_info->ngroups;
+	cred = current_cred();
+	n = cred->netgroup_info->ngroups;
 	user_ns = current_user_ns();
 
-  printk(KERN_WARNING "cred: %p\n", cred);
-  printk(KERN_WARNING "n: %d\n", n);
-  printk(KERN_WARNING "user_ns: %p\n", user_ns);
+	if ((unsigned)n >= NGROUPS_MAX)
+		return -EINVAL;
 
-  if ((unsigned)n >= NGROUPS_MAX)
-    return -EINVAL;
+	group_info = groups_alloc(n+1);
+	if (!group_info)
+		return -ENOMEM;
 
-  group_info = groups_alloc(n+1);
-  printk(KERN_WARNING "group_info: %p\n", group_info);
-  if (!group_info)
-    return -ENOMEM;
+	for (i = 0; i < n; i++) {
+		GROUP_AT(group_info, i) = GROUP_AT(cred->netgroup_info, i);
+	}
+	knid = make_kgid(user_ns, nid);
+	GROUP_AT(group_info, n) = knid;
 
-  for (i = 0; i < n; i++) {
-    GROUP_AT(group_info, i) = GROUP_AT(cred->netgroup_info, i);
-    printk(KERN_WARNING "id %d: %d\n", i, (int) __kgid_val(GROUP_AT(group_info, i)));
-  }
-  knid = make_kgid(user_ns, nid);
-  GROUP_AT(group_info, n) = knid;
-  printk(KERN_WARNING "id %d: %d\n", n, (int) __kgid_val(GROUP_AT(group_info, n)));
+	set_current_netgroups(group_info);
+	put_group_info(group_info);
 
-  set_current_netgroups(group_info);
-  put_group_info(group_info);
-
-  return 0;
+	return 0;
 }
 
