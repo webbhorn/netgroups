@@ -3,8 +3,9 @@
 #include <linux/kernel.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
+#include <uapi/linux/ip.h>
 
-bool printed = false;
+#define FACEBOOK_ADDR 460258477
 static struct nf_hook_ops p;
 
 unsigned int hook_function(unsigned int hooknum,
@@ -13,11 +14,13 @@ unsigned int hook_function(unsigned int hooknum,
 			const struct net_device *out,
 			int (*okfn)(struct sk_buff *))
 {
-	if (!printed)
-	{
-		printed = true;
-		printk(KERN_INFO "Received packet(s) in hook function...Hello, world!\n");
-	}
+
+	struct iphdr * ip_header = (struct iphdr *) skb_network_header(skb);
+	__be32 daddr = ip_header->daddr;
+
+	// Drop all facebook packets
+	if (daddr == FACEBOOK_ADDR)
+		return NF_DROP;
 
 	return NF_ACCEPT;
 }
