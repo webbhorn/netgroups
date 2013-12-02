@@ -4,7 +4,6 @@
 #include "nid.h"
 
 int main() {
-
   int i;
   long ret_nid = getrnid();
   printf("%lu\n", ret_nid);
