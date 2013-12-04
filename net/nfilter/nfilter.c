@@ -135,19 +135,16 @@ struct _hashtable *init_hash_table(int size) {
 	hashtable = kmalloc(sizeof(struct _hashtable), GFP_KERNEL);
 	if (!hashtable)
 		return NULL;
-	printk(KERN_INFO "kmalloc()'d the table struct\n");
 	
 	hashtable->table = kmalloc(sizeof(struct _list) * size, GFP_KERNEL);
 	if (!hashtable->table) {
 		kfree(hashtable);
 		return NULL;
 	}
-	printk(KERN_INFO "kmalloc'd the table elements\n");
 
 	hashtable->size = size;
 	for (i = 0; i < size; i++)
 		hashtable->table[i] = NULL;
-	printk(KERN_INFO "initialized elements to NULL\n");
 		
 	return hashtable;
 }
@@ -172,5 +169,33 @@ void free(struct _hashtable *hashtable) {
 
 	kfree(hashtable->table);
 	kfree(hashtable);
+}
+
+/* Could do better here. Good enough for now? */
+__u32 hash(struct _nidkey *key, struct _hashtable *hashtable) {
+	__u32 hashvalue;
+	hashvalue = (__u32)key->nid * (__u32)key->ip_addr;
+	return hashvalue % hashtable->size;
+}
+
+int key_eq(struct _nidkey *a, struct _nidkey *b) {
+	return (((__u32)a->nid == (__u32)b->nid) && 
+	        ((__u32)a->ip_addr == (__u32)b->ip_addr));
+}
+
+struct _nidpolicy *get(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr) {
+	struct _list *list;
+	struct _nidkey key = {
+		.nid = nid,
+		.ip_addr = ip_addr,
+	};
+
+	__u32 hashval = hash(&key, hashtable);
+	for (list = hashtable->table[hashval]; list != NULL; list = list->next) {
+		if (key_eq(&key, list->key))
+			return list->val;
+	}
+
+	return NULL;
 }
 

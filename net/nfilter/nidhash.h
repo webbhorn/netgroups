@@ -25,14 +25,16 @@ struct _hashtable {
 	struct _list **table;
 };
 
+int key_eq(struct _nidkey *a, struct _nidkey *b);
+
 /* Allocate the hash table by size */
 struct _hashtable *init_hash_table(int size);
 
 /* Get index into table from key */
-//uint32_t hash(struct _nidkey *key, struct _hashtable *table);
+__u32 hash(struct _nidkey *key, struct _hashtable *hashtable);
 
 /* Get policy by key */
-//struct _nidpolicy *get(struct _hashtable *table, struct _nidkey *key);
+struct _nidpolicy *get(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr);
 
 /* Add mapping: (nid, ip) --> policy */
 //int put(struct _hashtable *table, struct _nidkey key, struct _nidpolicy val);
