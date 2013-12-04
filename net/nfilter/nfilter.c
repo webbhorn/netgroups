@@ -1,18 +1,26 @@
+#include "nidhash.h"
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
 #include <uapi/linux/ip.h>
-
+#include <linux/slab.h>
 #include <linux/cred.h>
 #include <linux/sched.h>
 #include <linux/uidgid.h>
 
+#define HASH_TABLE_SIZE 8
+static struct _hashtable *policymap;
+
 #define FACEBOOK_ADDR 460258477
 static struct nf_hook_ops p;
 
-/* a simple bsearch */
+/*
+ * a simple bsearch
+ * TODO: export group_search from groups.c.
+ */
 int groups_search(const struct group_info *group_info, kgid_t grp)
 {
 	unsigned int left, right;
@@ -35,6 +43,7 @@ int groups_search(const struct group_info *group_info, kgid_t grp)
 }
 
 
+
 unsigned int hook_function(unsigned int hooknum,
 			struct sk_buff *skb,
 			const struct net_device *in,
@@ -54,6 +63,22 @@ unsigned int hook_function(unsigned int hooknum,
 		printk(KERN_INFO "Caller is NID 42.\n");
 	put_group_info(netgroup_info);
 
+	/*
+	 * For each nid in calling process:
+	 *	- Check if destination IP is blocked by a policy.
+	 *		- YES: drop packet
+	 *		- NO: permit packet
+	 *
+	 * Need a fast lookup function:
+	 *	f(nid, ip_addr) --> blocked? (boolean)
+	 *
+	 * Should support:
+	 *	set(nid, ip_addr, block/permit)
+	 *	get(nid, ip_addr) --> block/permit
+	 *
+	 * This is: a map from (nid, ip_addr) --> boolean
+	 */
+
 	// Drop all facebook packets
 	if (daddr == FACEBOOK_ADDR)
 		return NF_DROP;
@@ -72,12 +97,17 @@ static int nfilter_init(void)
 
 	nf_register_hook(&p);
 
+	/* Initialize the policymap */
+	policymap = init_hash_table(HASH_TABLE_SIZE);
+
 	return 0;
 }
 
 static void nfilter_exit(void)
 {
 	nf_unregister_hook(&p);
+
+	free(policymap);
 
 	printk(KERN_INFO "Removed nfilter module\n");
 }
@@ -88,3 +118,59 @@ module_exit(nfilter_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Tim Donegan");
 MODULE_DESCRIPTION("Filtering packets");
+
+
+
+/*
+ * hash table stuff
+ */
+
+struct _hashtable *init_hash_table(int size) {
+	int i;
+	struct _hashtable *hashtable;
+
+	if (size < 1)
+		return NULL;
+	
+	hashtable = kmalloc(sizeof(struct _hashtable), GFP_KERNEL);
+	if (!hashtable)
+		return NULL;
+	printk(KERN_INFO "kmalloc()'d the table struct\n");
+	
+	hashtable->table = kmalloc(sizeof(struct _list) * size, GFP_KERNEL);
+	if (!hashtable->table) {
+		kfree(hashtable);
+		return NULL;
+	}
+	printk(KERN_INFO "kmalloc'd the table elements\n");
+
+	hashtable->size = size;
+	for (i = 0; i < size; i++)
+		hashtable->table[i] = NULL;
+	printk(KERN_INFO "initialized elements to NULL\n");
+		
+	return hashtable;
+}
+
+void free(struct _hashtable *hashtable) {
+	int i;
+	struct _list *list, *temp;
+
+	if (!hashtable)
+		return;
+	
+	for (i = 0; i < hashtable->size; i++) {
+		list = hashtable->table[i];
+		while (list != NULL) {
+			temp = list;
+			list = list->next;
+			kfree(temp->key);
+			kfree(temp->val);
+			kfree(temp);
+		}
+	}
+
+	kfree(hashtable->table);
+	kfree(hashtable);
+}
+
