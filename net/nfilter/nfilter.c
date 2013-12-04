@@ -113,8 +113,8 @@ module_init(nfilter_init);
 module_exit(nfilter_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Tim Donegan");
-MODULE_DESCRIPTION("Filtering packets");
+MODULE_AUTHOR("Tim Donegan <donegan@mit.edu>, Webb Horn <webbhorn@mit.edu>");
+MODULE_DESCRIPTION("Netgroups filtering code");
 
 
 
