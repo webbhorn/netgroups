@@ -20,19 +20,19 @@
 
 // global vars: sue me
 static dev_t device_nums;
+struct device* sysfs_device;
 static struct class *fifo_device_class;
 static struct cdev *fifo_cdev;
 static DEFINE_KFIFO(inputFIFO, char, MAX_MSGS);
 // from example: keep track of message lengths
-static unsigned int fifo_msg_lens[MAX_MSGS];
+static ssize_t fifo_msg_lens[MAX_MSGS];
 // indices for message len array
 static int msg_len_rd, msg_len_write;
-
 
 static ssize_t read_dummy(struct file *filp, char __user *buf,
 		size_t count, loff_t *f_pos) {
 	int return_code;
-	unsigned int bytes_copied;
+	ssize_t bytes_copied;
 	
 	if (kfifo_is_empty(&inputFIFO)) {
 		printk(KERN_INFO "FIFO was empty!");
@@ -69,9 +69,48 @@ static struct file_operations f_ops = {
 	.release = release_dummy
 };
 
+// Writing to queue using sysfs
+static ssize_t sysfile_add_to_kfifo(struct device* dev, struct device_attribute* attr,
+	const char* buf, size_t count) {
+	ssize_t copied;
+	
+	if (kfifo_avail(&inputFIFO) < count) {
+		printk(KERN_INFO "Not enough space on KFIFO queue, sorry\n");
+		return -ENOSPC;
+	} else if ((msg_len_write + 1) % MAX_MSGS == msg_len_rd) {
+		// Table is full
+		printk(KERN_INFO "KFIFO queue is full. Clear it before inserting.\n");
+		return -ENOSPC;
+	}
+
+	// buf holds the text to insert into the KFIFO already!
+	copied = kfifo_in(&inputFIFO, buf, count);
+        fifo_msg_lens[msg_len_write] = copied;
+	
+	// update our write index
+	msg_len_write = (msg_len_write + 1) % MAX_MSGS; 	
+
+	return copied;
+}
+
+// Clear queue using sysfs
+static ssize_t sysfile_clear_kfifo(struct device* dev, struct device_attribute* attr,
+	const char* buf, size_t count) {
+	
+	// Just clear the queue, returning the count arg provided
+	kfifo_reset(&inputFIFO);
+	msg_len_rd = 0;
+	msg_len_write = 0;
+
+	return count;
+}
+
+// Declare the sysfs methods used
+static DEVICE_ATTR(fifo, S_IWUSR, NULL, sysfile_add_to_kfifo);
+static DEVICE_ATTR(reset, S_IWUSR, NULL, sysfile_clear_kfifo);
+
 // Called on load of kernel module
-static int __init cd_tester_init(void)
-{
+static int __init cd_tester_init(void) {
 	int return_val;
 	printk(KERN_INFO "%s has started to init\n", PROG_NAME);
 	
@@ -88,11 +127,22 @@ static int __init cd_tester_init(void)
 	}
 
 	// Now, create a device file (in /dev)
-	if (device_create(fifo_device_class, NULL, device_nums, NULL, PROG_NAME) == NULL) {
+	sysfs_device = device_create(fifo_device_class, NULL, device_nums, NULL, PROG_NAME);
+	if (sysfs_device == NULL) {
 		return_val = -1;
 		goto err_dev_create;
 	}	
-		
+
+	// Add files in /sys for adding and resetting the queue
+	return_val = device_create_file(sysfs_device, &dev_attr_fifo);
+	if (return_val < 0) {
+		printk(KERN_INFO "%s failed to create the fifo write file...\n", PROG_NAME);
+	}
+	return_val = device_create_file(sysfs_device, &dev_attr_reset);
+	if (return_val < 0) {
+		printk(KERN_INFO "%s failed to create the fifo reset file...\n", PROG_NAME);
+	}
+
 	// Need to register a character device
 	// Do this by allocing/initing a cdev struct
 	fifo_cdev = cdev_alloc();
@@ -102,10 +152,14 @@ static int __init cd_tester_init(void)
 	// Add device to kernel
 	return_val = cdev_add(fifo_cdev, device_nums, 1);
 	if (return_val >= 0) {
-		return 0; // setup OK
+		INIT_KFIFO(inputFIFO);
+		msg_len_rd = 0;
+		msg_len_write = 0;
+		return 0; // setup OK, else, destroy everything created
 	}
 
-err_cdev_add:
+	device_remove_file(sysfs_device, &dev_attr_reset);
+	device_remove_file(sysfs_device, &dev_attr_fifo);
 	device_destroy(fifo_device_class, device_nums);
 err_dev_create:
 	class_destroy(fifo_device_class);
@@ -118,9 +172,10 @@ err:
 
 // Called on unload of kernel module
 
-static void __exit cd_tester_cleanup(void)
-{
+static void __exit cd_tester_cleanup(void) {
 	cdev_del(fifo_cdev);
+	device_remove_file(sysfs_device, &dev_attr_reset);
+	device_remove_file(sysfs_device, &dev_attr_fifo);
 	device_destroy(fifo_device_class, device_nums);
 	class_destroy(fifo_device_class);
 	unregister_chrdev_region(device_nums, 1);
