@@ -183,7 +183,7 @@ int key_eq(struct _nidkey *a, struct _nidkey *b) {
 	        ((__u32)a->ip_addr == (__u32)b->ip_addr));
 }
 
-struct _nidpolicy *get(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr) {
+struct _list *get(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr) {
 	struct _list *list;
 	struct _nidkey key = {
 		.nid = nid,
@@ -193,9 +193,56 @@ struct _nidpolicy *get(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr) 
 	__u32 hashval = hash(&key, hashtable);
 	for (list = hashtable->table[hashval]; list != NULL; list = list->next) {
 		if (key_eq(&key, list->key))
-			return list->val;
+			return list;
 	}
 
 	return NULL;
+}
+
+int put(struct _hashtable *table, gid_t nid, __be32 ip_addr, int blocked) {
+	struct _nidkey *key;
+	struct _nidpoilcy *val;
+	struct _list *new_list;
+	struct _list *current_list;
+	__u32 hashval;
+
+	if (!hashtable)
+		return -1;
+
+	/* Prepare structures */
+	key = kmalloc(sizeof(struct _nidkey), GFP_KERNEL);
+	if (!key)
+		return -1;
+	key->nid = nid;
+	key->ip_addr = ip_addr;
+
+	val = kmalloc(sizeof(struct _nidpolicy), GFP_KERNEL);
+	if (!val) {
+		kfree(key);	
+		return -1;
+	}
+	val->blocked = blocked;
+
+	hashval = hash(&key, hashtable);	
+	new_list = kmalloc(sizeof(struct _list), GFP_KERNEL);
+	if (!new_list) {
+		kfree(key);
+		kfree(val);
+		return -1;
+	}
+
+	current_list = get(hashtable, nid, ip_addr);
+	if (current_list != NULL) {
+		kfree(key);
+		kfree(val);
+		kfree(new_list);
+		return 2;  /* already exists */
+	}
+	new_list->key = key;
+	new_list->val = val;
+	new_list->next = hashtable->table[hashval];
+	hashtable->table[hashval] = new_list;
+
+	return 0;
 }
 
