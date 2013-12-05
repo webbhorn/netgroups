@@ -36,14 +36,19 @@ static ssize_t read_dummy(struct file *filp, char __user *buf,
 	ssize_t bytes_copied;
 	
 	if (kfifo_is_empty(&inputFIFO)) {
+		msg_len_rd = 0;
 		printk(KERN_INFO "FIFO was empty!");
+	} else if (msg_len_rd + 1 == msg_len_write) {
+		printk(KERN_INFO "read entire buffer");
+		msg_len_rd = 0;
+		return 0;
 	}
 
 	// Send data to user space, keep return code, bytes copied and update pointer
 	// in message length array
 	return_code = kfifo_to_user(&inputFIFO, buf, fifo_msg_lens[msg_len_rd],
 		&bytes_copied);	
-	msg_len_rd = (msg_len_rd + 1) % MAX_MSGS;
+	msg_len_rd = (msg_len_rd + 1);
 
 	// Return any error, or else the number of bytes pushed to userland
 	return return_code ? return_code : bytes_copied;
@@ -87,7 +92,7 @@ static ssize_t sysfile_add_to_kfifo(struct device* dev, struct device_attribute*
 	if (kfifo_avail(&inputFIFO) < count) {
 		printk(KERN_INFO "Not enough space on KFIFO queue, sorry\n");
 		return -ENOSPC;
-	} else if ((msg_len_write + 1) % MAX_MSGS == msg_len_rd) {
+	} else if ((msg_len_write + 1) == MAX_MSGS) {
 		// Table is full
 		printk(KERN_INFO "KFIFO queue is full. Clear it before inserting.\n");
 		return -ENOSPC;
@@ -98,7 +103,7 @@ static ssize_t sysfile_add_to_kfifo(struct device* dev, struct device_attribute*
         fifo_msg_lens[msg_len_write] = copied;
 	
 	// update our write index
-	msg_len_write = (msg_len_write + 1) % MAX_MSGS; 	
+	msg_len_write = (msg_len_write + 1); 	
 
 	return copied;
 }
