@@ -1,4 +1,4 @@
-#include "nidhash.h"
+#include "ngpolicy.h"
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -9,22 +9,43 @@
 #include <linux/cred.h>
 #include <linux/sched.h>
 #include <linux/uidgid.h>
+#include <linux/spinlock.h>
 
-#define HASH_TABLE_SIZE 1021
-static struct _hashtable *policymap;
+#define POLICY_TABLE_SIZE 1021
 
 static struct nf_hook_ops p;
 
-__be32 make_ipaddr(__u8 b1, __u8 b2, __u8 b3, __u8 b4) {
-	__be32 addr = 0;
-	addr |= b4;
-	addr = addr << 8;
-	addr |= b3;
-	addr = addr << 8;
-	addr |= b2;
-	addr = addr << 8;
-	addr |= b1;
-	return addr;
+int blockpkt(uid_t uid, gid_t nid, __be32 addr)
+{
+	struct _list *policy;
+	int block;
+
+	read_lock(&ngpolicymap_rwlk);
+	policy = get_ngpolicy(uid, nid);
+	if (!policy) {
+		read_unlock(&ngpolicymap_rwlk);
+		return false;
+	}
+
+	switch(policy->val->mode) {
+	case NG_WHITELIST:
+		if (ngpolicy_contains_ip(policy->val, addr))
+			block = false;
+		else
+			block = true;
+		break;
+	case NG_BLACKLIST:
+		if (ngpolicy_contains_ip(policy->val, addr))
+			block = true;
+		else
+			block = false;
+		break;
+	default:
+		block = false;  /* do not block */
+		break;
+	}
+	read_unlock(&ngpolicymap_rwlk);
+	return block;
 }
 
 unsigned int hook_function(unsigned int hooknum,
@@ -46,14 +67,10 @@ unsigned int hook_function(unsigned int hooknum,
 	const struct cred *cc = current_cred();
 	struct group_info *netgroup_info = get_group_info(cc->netgroup_info);
 	for (i = 0; i < netgroup_info->ngroups; i++) {
-		struct _list *policy;
 		kgid_t knid = GROUP_AT(netgroup_info, i);
 		gid_t nid = from_kgid_munged(user_ns, knid);
-		policy = get(policymap, uid, nid, daddr);
 
-		if (policy == NULL)
-			continue;
-		if (policy->val->blocked)
+		if (blockpkt(uid, nid, daddr))
 			return NF_DROP;
 	}
 
@@ -63,6 +80,7 @@ unsigned int hook_function(unsigned int hooknum,
 static int nfilter_init(void)
 {
 	int retput;
+	struct _list *policy;
 	__be32 mitaddr, fbaddr;
 
 	printk(KERN_INFO "Loaded nfilter module\n");
@@ -75,13 +93,22 @@ static int nfilter_init(void)
 	nf_register_hook(&p);
 
 	/* Initialize the policymap */
-	policymap = init_hash_table(HASH_TABLE_SIZE);
+	rwlock_init(&ngpolicymap_rwlk);
+	write_lock(&ngpolicymap_rwlk);
+	retput = init_ngpolicymap(POLICY_TABLE_SIZE);
 
 	/* Some test policies */
 	mitaddr = make_ipaddr(18, 9, 22, 69);
 	fbaddr = make_ipaddr(173, 252, 110, 27);
-	retput = put(policymap, 1000, 43, mitaddr, true);
-	retput = put(policymap, 1000, 42, fbaddr, true);
+
+	retput = put_ngpolicy(1000, 42, NG_BLACKLIST);
+	policy = get_ngpolicy(1000, 42);
+	retput = add_ip_to_ngpolicy(policy->val, fbaddr);
+
+	retput = put_ngpolicy(1000, 43, NG_WHITELIST);
+	policy = get_ngpolicy(1000, 43);
+	retput = add_ip_to_ngpolicy(policy->val, mitaddr);
+	write_unlock(&ngpolicymap_rwlk);
 
 	return 0;
 }
@@ -89,7 +116,9 @@ static int nfilter_init(void)
 static void nfilter_exit(void)
 {
 	nf_unregister_hook(&p);
-	free(policymap);
+	write_lock(&ngpolicymap_rwlk);
+	free_ngpolicymap();
+	write_unlock(&ngpolicymap_rwlk);
 	printk(KERN_INFO "Removed nfilter module\n");
 }
 

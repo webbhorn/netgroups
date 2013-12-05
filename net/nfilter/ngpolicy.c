@@ -1,0 +1,206 @@
+#include <linux/slab.h>
+#include <linux/uidgid.h>
+#include <uapi/linux/ip.h>
+
+#include "ngpolicy.h"
+
+static struct _hashtable *ngpolicymap;
+
+rwlock_t ngpolicymap_rwlk; 
+EXPORT_SYMBOL(ngpolicymap_rwlk);
+
+static void free_ip_list(struct _ip_list *list) {
+	struct _ip_list *temp;
+	while (list != NULL) {
+		temp = list;
+		list = list->next;
+		kfree(temp);
+	}
+}
+
+static void free_nidpolicy(struct _nidpolicy *policy) {
+	if (!policy)
+		return;
+	free_ip_list(policy->ips);
+	kfree(policy);
+}
+
+/*
+ * HASH: (uid, nid) --> u32
+ * Could do better here. Good enough for now?
+ */
+static __u32 hash(struct _nidkey *key, struct _hashtable *hashtable) {
+	__u32 hashvalue;
+	hashvalue = (__u32)key->nid * (__u32)key->uid;
+	return hashvalue % hashtable->size;
+}
+
+static int key_eq(struct _nidkey *a, struct _nidkey *b) {
+	return (((__u32)a->nid == (__u32)b->nid) &&
+	        ((__u32)a->uid == (__u32)b->uid));
+}
+
+__be32 make_ipaddr(__u8 b1, __u8 b2, __u8 b3, __u8 b4) {
+	__be32 addr = 0;
+	addr |= b4;
+	addr = addr << 8;
+	addr |= b3;
+	addr = addr << 8;
+	addr |= b2;
+	addr = addr << 8;
+	addr |= b1;
+	return addr;
+}
+
+EXPORT_SYMBOL(make_ipaddr);
+
+int init_ngpolicymap(int size) {
+	int i;
+	if (size < 1)
+		return -1;
+	
+	ngpolicymap = kmalloc(sizeof(struct _hashtable), GFP_KERNEL);
+	if (!ngpolicymap)
+		return -1;
+	
+	ngpolicymap->table = kmalloc(sizeof(struct _list) * size, GFP_KERNEL);
+	if (!ngpolicymap->table) {
+		kfree(ngpolicymap);
+		return -1;
+	}
+
+	ngpolicymap->size = size;
+	for (i = 0; i < size; i++)
+		ngpolicymap->table[i] = NULL;
+		
+	return 0;
+}
+
+EXPORT_SYMBOL(init_ngpolicymap);
+
+void free_ngpolicymap() {
+	int i;
+	struct _list *list, *temp;
+	struct _hashtable *hashtable;
+
+	hashtable = ngpolicymap;
+	if (!hashtable)
+		return;
+	
+	for (i = 0; i < hashtable->size; i++) {
+		list = hashtable->table[i];
+		while (list != NULL) {
+			temp = list;
+			list = list->next;
+			kfree(temp->key);
+			free_nidpolicy(temp->val);
+			kfree(temp);
+		}
+	}
+
+	kfree(hashtable->table);
+	kfree(hashtable);
+}
+
+EXPORT_SYMBOL(free_ngpolicymap);
+
+struct _list *get_ngpolicy(uid_t uid, gid_t nid) {
+	struct _list *list;
+	struct _hashtable *hashtable = ngpolicymap;
+	struct _nidkey key = {
+		.uid = uid,
+		.nid = nid
+	};
+
+	__u32 hashval = hash(&key, hashtable);
+	for (list = hashtable->table[hashval]; list != NULL; list = list->next)
+		if (key_eq(&key, list->key))
+			return list;
+
+	return NULL;
+}
+
+EXPORT_SYMBOL(get_ngpolicy);
+
+int put_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
+	struct _hashtable *hashtable;
+	struct _nidkey *key;
+	struct _nidpolicy *val;
+	struct _list *new_list;
+	struct _list *current_list;
+	__u32 hashval;
+
+	hashtable = ngpolicymap;
+	if (!hashtable)
+		return -1;
+
+	/* Prepare structures */
+	key = kmalloc(sizeof(struct _nidkey), GFP_KERNEL);
+	if (!key)
+		return -1;
+	key->uid = uid;
+	key->nid = nid;
+
+	val = kmalloc(sizeof(struct _nidpolicy), GFP_KERNEL);
+	if (!val) {
+		kfree(key);	
+		return -1;
+	}
+	val->mode = mode;
+	val->ips = NULL;
+
+	hashval = hash(key, hashtable);	
+	new_list = kmalloc(sizeof(struct _list), GFP_KERNEL);
+	if (!new_list) {
+		kfree(key);
+		kfree(val);
+		return -1;
+	}
+
+	current_list = get_ngpolicy(uid, nid);
+	if (current_list != NULL) {
+		kfree(key);
+		kfree(val);
+		kfree(new_list);
+		return 2;  /* already exists */
+	}
+	new_list->key = key;
+	new_list->val = val;
+	new_list->next = hashtable->table[hashval];
+	hashtable->table[hashval] = new_list;
+
+	return 0;
+}
+
+EXPORT_SYMBOL(put_ngpolicy);
+
+int add_ip_to_ngpolicy(struct _nidpolicy *policy, __be32 addr) {
+	struct _ip_list *head;
+	struct _ip_list *new;
+
+	if (!policy)
+		return -1;
+	head = policy->ips;
+
+	new = kmalloc(sizeof(struct _ip_list), GFP_KERNEL);
+	if (!new)
+		return -1;
+	new->addr = addr;
+	new->next = head;
+
+	policy->ips = new;
+	policy->size += 1;
+	return 0;
+}
+
+EXPORT_SYMBOL(add_ip_to_ngpolicy);
+
+int ngpolicy_contains_ip(struct _nidpolicy *policy, __be32 addr) {
+	struct _ip_list *list;
+	for (list = policy->ips; list != NULL; list = list->next)
+		if (list->addr == addr)
+			return true;
+	return false;
+}
+
+EXPORT_SYMBOL(ngpolicy_contains_ip);
