@@ -14,6 +14,8 @@
 #include <linux/mutex.h>
 #include <linux/kfifo.h>
 #include <linux/cdev.h>
+#include <linux/string.h>
+#include <linux/uidgid.h>
 
 #define PROG_NAME "simpleCharDriver"
 #define MAX_MSGS 64
@@ -89,23 +91,74 @@ static ssize_t sysfile_add_to_kfifo(struct device* dev, struct device_attribute*
 	const char* buf, size_t count) {
 	ssize_t copied;
 	
-	if (kfifo_avail(&inputFIFO) < count) {
-		printk(KERN_INFO "Not enough space on KFIFO queue, sorry\n");
-		return -ENOSPC;
-	} else if ((msg_len_write + 1) == MAX_MSGS) {
-		// Table is full
-		printk(KERN_INFO "KFIFO queue is full. Clear it before inserting.\n");
-		return -ENOSPC;
-	}
-
-	// buf holds the text to insert into the KFIFO already!
-	copied = kfifo_in(&inputFIFO, buf, count);
-        fifo_msg_lens[msg_len_write] = copied;
+	// STRING CONSTANTS...refactor these into a .h file sometime soon
+	const char * set_prefix = "set";
+	if ( strnicmp(buf, set_prefix, strlen(set_prefix)) != 0 ) {
+		goto err;
+	}	
+	// buf holds the text to parse for a policy to query
 	
-	// update our write index
-	msg_len_write = (msg_len_write + 1); 	
+	// get the uid
+	char *uid = strchr(buf, ' ');
+	if (!uid) {
+		printk(KERN_INFO "UID not found\n");
+		goto err;
+	}
+	*uid = '\0';
+	uid++;
+	
+	// get the nid
+	char *nid = strchr(uid, ' ');
+	if (!nid) {
+		printk(KERN_INFO "NID not found\n");
+		goto err;
+	}
+	*nid = '\0';
+	nid++;
 
-	return copied;
+	// get b/w bit
+	char *mode = strchr(nid, ' ');
+	if (!mode) {
+		printk(KERN_INFO "Policy mode not found\n");
+		goto err;
+	}
+	*mode = '\0';
+	mode++;
+
+	// now, parse UID/NID
+	// The following code depends on the fact that
+	// uid_t and gid_t are unsigned ints
+	unsigned int uid_val_as_uint;
+	if (kstrtouint(uid, 10, &uid_val_as_uint) != 0) {
+		printk(KERN_INFO "uid could not be parsed\n");
+		goto err;
+	}
+	// convert to uid_t
+	uid_t uid_val = uid_val_as_uint;
+	// print
+	printk(KERN_INFO "uid is:%u\n", uid_val);
+
+	// parse gid
+	unsigned int nid_val_as_uint;
+	if (kstrtouint(nid, 10, &nid_val_as_uint) != 0) {
+		printk(KERN_INFO "nid could not be parsed\n");
+		goto err;
+	}
+	// covert to gid_t
+	gid_t nid_val = nid_val_as_uint;
+	// print
+	printk(KERN_INFO "nid is: %u\n", nid_val);
+
+	// following mode is a list of IP addresses
+	goto ok;
+
+err:
+	printk(KERN_INFO "message did not parse correctly...\n");
+	goto end;
+ok:	
+	printk(KERN_INFO "message parsed correctly!\n");
+end:
+	return count;
 }
 
 // Clear queue using sysfs
