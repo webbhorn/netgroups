@@ -24,6 +24,7 @@ struct device* sysfs_device;
 static struct class *fifo_device_class;
 static struct cdev *fifo_cdev;
 static DEFINE_KFIFO(inputFIFO, char, MAX_MSGS);
+static DEFINE_MUTEX(kfifo_mutex);
 // from example: keep track of message lengths
 static ssize_t fifo_msg_lens[MAX_MSGS];
 // indices for message len array
@@ -55,10 +56,19 @@ static int open_dummy(struct inode *inode, struct file *filp) {
   		return -EACCES;
 	}
 
+	// ask mutex for lock
+	if (!mutex_trylock(&kfifo_mutex)) {
+		printk(KERN_INFO "Queue access is denied: already open in some other process\n");
+		return -EBUSY;
+	}
+
 	return 0;
 }
 
 static int release_dummy(struct inode *inode, struct file *filp) {
+	// release the queue's mutex
+	mutex_unlock(&kfifo_mutex);
+
 	return 0;
 }
 
@@ -151,13 +161,17 @@ static int __init cd_tester_init(void) {
 
 	// Add device to kernel
 	return_val = cdev_add(fifo_cdev, device_nums, 1);
-	if (return_val >= 0) {
-		INIT_KFIFO(inputFIFO);
-		msg_len_rd = 0;
-		msg_len_write = 0;
-		return 0; // setup OK, else, destroy everything created
+	if (return_val < 0) {
+		goto err_cdev_add;
 	}
 
+	// Finish setup
+	INIT_KFIFO(inputFIFO);
+	msg_len_rd = 0;
+	msg_len_write = 0;
+	return 0; // setup OK, else, destroy everything created
+
+err_cdev_add:
 	device_remove_file(sysfs_device, &dev_attr_reset);
 	device_remove_file(sysfs_device, &dev_attr_fifo);
 	device_destroy(fifo_device_class, device_nums);
@@ -173,6 +187,7 @@ err:
 // Called on unload of kernel module
 
 static void __exit cd_tester_cleanup(void) {
+	mutex_destroy(&kfifo_mutex);
 	cdev_del(fifo_cdev);
 	device_remove_file(sysfs_device, &dev_attr_reset);
 	device_remove_file(sysfs_device, &dev_attr_fifo);
