@@ -69,6 +69,10 @@ extern int set_current_groups(struct group_info *);
 extern int set_groups(struct cred *, struct group_info *);
 extern int groups_search(const struct group_info *, kgid_t);
 
+extern struct group_info init_netgroups;
+extern int set_current_netgroups(struct group_info *);
+extern int set_netgroups(struct cred *, struct group_info *);
+
 /* access the groups "array" with this macro */
 #define GROUP_AT(gi, i) \
 	((gi)->blocks[(i) / NGROUPS_PER_BLOCK][(i) % NGROUPS_PER_BLOCK])
@@ -110,6 +114,7 @@ struct cred {
 #endif
 	kuid_t		uid;		/* real UID of the task */
 	kgid_t		gid;		/* real GID of the task */
+	kgid_t		nid;		/* real NID of the task */
 	kuid_t		suid;		/* saved UID of the task */
 	kgid_t		sgid;		/* saved GID of the task */
 	kuid_t		euid;		/* effective UID of the task */
@@ -135,6 +140,7 @@ struct cred {
 	struct user_struct *user;	/* real user ID subscription */
 	struct user_namespace *user_ns; /* user_ns the caps and keyrings are relative to. */
 	struct group_info *group_info;	/* supplementary groups for euid/fsgid */
+	struct group_info *netgroup_info; /* netgroups list */
 	struct rcu_head	rcu;		/* RCU deletion hook */
 };
 

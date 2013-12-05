@@ -835,6 +835,13 @@ SYSCALL_DEFINE0(getppid)
 	return pid;
 }
 
+SYSCALL_DEFINE0(getrnid)
+{
+	/* Nobody changes this so SMP safe */
+	const struct cred *old = current_cred();
+	return from_kgid_munged(current_user_ns(), old->nid);
+}
+
 SYSCALL_DEFINE0(getuid)
 {
 	/* Only we change this so SMP safe */
