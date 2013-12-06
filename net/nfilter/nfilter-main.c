@@ -36,17 +36,20 @@ unsigned int hook_function(unsigned int hooknum,
 	int i;
 
 	struct iphdr * ip_header = (struct iphdr *) skb_network_header(skb);
+	struct user_namespace *user_ns = current_user_ns();
+
 	__be32 daddr = ip_header->daddr;
+	kuid_t kuid = current_uid();
+	uid_t uid = from_kuid_munged(user_ns, kuid);
 
 	/* For each nid, check policy of daddr */
 	const struct cred *cc = current_cred();
 	struct group_info *netgroup_info = get_group_info(cc->netgroup_info);
-	struct user_namespace *user_ns = current_user_ns();
 	for (i = 0; i < netgroup_info->ngroups; i++) {
 		struct _list *policy;
 		kgid_t knid = GROUP_AT(netgroup_info, i);
 		gid_t nid = from_kgid_munged(user_ns, knid);
-		policy = get(policymap, nid, daddr);
+		policy = get(policymap, uid, nid, daddr);
 
 		if (policy == NULL)
 			continue;
@@ -77,8 +80,8 @@ static int nfilter_init(void)
 	/* Some test policies */
 	mitaddr = make_ipaddr(18, 9, 22, 69);
 	fbaddr = make_ipaddr(173, 252, 110, 27);
-	retput = put(policymap, 43, mitaddr, true);
-	retput = put(policymap, 42, fbaddr, true);
+	retput = put(policymap, 1000, 43, mitaddr, true);
+	retput = put(policymap, 1000, 42, fbaddr, true);
 
 	return 0;
 }

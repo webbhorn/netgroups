@@ -56,19 +56,20 @@ void free(struct _hashtable *hashtable) {
  */
 __u32 hash(struct _nidkey *key, struct _hashtable *hashtable) {
 	__u32 hashvalue;
-	hashvalue = (__u32)key->nid * (__u32)key->ip_addr;
+	hashvalue = (__u32)key->nid * (__u32)key->ip_addr * (__u32)key->uid;
 	return hashvalue % hashtable->size;
 }
 
 int key_eq(struct _nidkey *a, struct _nidkey *b) {
-	int eq= (((__u32)a->nid == (__u32)b->nid) && 
-	         ((__u32)a->ip_addr == (__u32)b->ip_addr));
-	return eq;
+	return (((__u32)a->nid == (__u32)b->nid) && 
+	        ((__u32)a->ip_addr == (__u32)b->ip_addr) &&
+	        ((__u32)a->uid == (__u32)b->uid));
 }
 
-struct _list *get(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr) {
+struct _list *get(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_addr) {
 	struct _list *list;
 	struct _nidkey key = {
+		.uid = uid,
 		.nid = nid,
 		.ip_addr = ip_addr,
 	};
@@ -81,7 +82,7 @@ struct _list *get(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr) {
 	return NULL;
 }
 
-int put(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr, int blocked) {
+int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_addr, int blocked) {
 	struct _nidkey *key;
 	struct _nidpolicy *val;
 	struct _list *new_list;
@@ -95,6 +96,7 @@ int put(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr, int blocked) {
 	key = kmalloc(sizeof(struct _nidkey), GFP_KERNEL);
 	if (!key)
 		return -1;
+	key->uid = uid;
 	key->nid = nid;
 	key->ip_addr = ip_addr;
 
@@ -113,7 +115,7 @@ int put(struct _hashtable *hashtable, gid_t nid, __be32 ip_addr, int blocked) {
 		return -1;
 	}
 
-	current_list = get(hashtable, nid, ip_addr);
+	current_list = get(hashtable, uid, nid, ip_addr);
 	if (current_list != NULL) {
 		kfree(key);
 		kfree(val);
