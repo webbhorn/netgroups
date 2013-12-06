@@ -1,0 +1,3 @@
+obj-m += nfilter_mod/ set_policy/
+
+cc-flags-y += -Iinclude
