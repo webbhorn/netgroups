@@ -100,142 +100,135 @@ static struct file_operations f_ops = {
 	.release = release_dummy
 };
 
-// Writing to queue using sysfs
+// Writing to this file adds a policy
 static ssize_t sysfile_add_to_kfifo(struct device* dev, struct device_attribute* attr,
-	const char* buf, size_t count) {
-	
+	const char* buf, size_t count) {	
 	// STRING CONSTANTS...refactor these into a .h file sometime soon
 	const char * set_prefix = "set";
-	const char * get_prefix = "get";
 	const char * mode_blacklist = "b";
 	const char * mode_whitelist = "w";
 	
-	int policy_mode = 0;
-	/* 0 is unset, 1 is blacklist, 2 whitelist */	
+	int policy_mode = 0;	/* 0 is unset, 1 is blacklist, 2 whitelist */	
 
-	// check set prefix
-	if ( strnicmp(buf, set_prefix, strlen(set_prefix)) != 0 ) {
-		printk("invalid prefix found!\n");
+	char *uid; // Pointer to UID string
+	char *nid; // Pointer to NID string
+	char *mode; // Pointer to policy mode string
+	uid_t uid_val; // UID as UID type
+	gid_t nid_val; // NID as GID type
+	
+	__be32 ip_addrs[MAX_IPs]; // Store IP addresses
+	__u8 octals[4]; // Store IP octals
+
+	char *ip; // Pointer to IP address string
+	char *end_of_input = buf + count; // End of input string
+	char *end_of_ip; // End of IP address string
+	char *octal_start; // Start of IP octal
+	char *end_of_octal; // End of IP octal
+	__u8 octal_val; // Octal as __u8 type
+	__be32 parsed_IP; // Parsed IP as IP type
+
+	int ip_i; // IP address loop var
+	int octal_i; // Octal loop var
+
+	if ( strnicmp(buf, set_prefix, strlen(set_prefix)) != 0 ) { // check set prefix
+		printk("Invalid action specified. Valid actions are 'set' or 'get'.\n");
 		goto err;
 	}	
-	// buf holds the text to parse for a policy to query
 	
-	// get the uid
-	char *uid = strchr(buf, ' ');
+	uid = strchr(buf, ' '); // get UID
 	if (!uid) {
-		printk(KERN_INFO "UID not found\n");
+		printk(KERN_INFO "Syntax error: could not find a UID.\n");
 		goto err;
 	}
 	*uid = '\0';
 	uid++;
 	
-	// get the nid
-	char *nid = strchr(uid, ' ');
+	nid = strchr(uid, ' '); // get NID
 	if (!nid) {
-		printk(KERN_INFO "NID not found\n");
+		printk(KERN_INFO "Syntax error: could not find an NID.\n");
 		goto err;
 	}
 	*nid = '\0';
 	nid++;
 
-	// get b/w bit
-	char *mode = strchr(nid, ' ');
+	mode = strchr(nid, ' '); // get policy mode
 	if (!mode) {
-		printk(KERN_INFO "Policy mode not found\n");
+		printk(KERN_INFO "Syntax error: could not find a policy mode.\n");
 		goto err;
 	}
 	*mode = '\0';
 	mode++;
 
-	// now, parse UID/NID
-	// The following code depends on the fact that
-	// uid_t and gid_t are unsigned ints
-	uid_t uid_val;
-	if (kstrtouint(uid, 10, &uid_val) != 0) {
-		printk(KERN_INFO "uid could not be parsed\n");
+	// Parse UID
+	if (kstrtouint(uid, 10, &uid_val) != 0) { // depends on uid_t being unsigned int
+		printk(KERN_INFO "Invalid UID specified.\n");
 		goto err;
 	}
 	printk(KERN_INFO "uid is: %u\n", uid_val);
-
-	gid_t nid_val;
+	
+	// Parse NID
 	if (kstrtouint(nid, 10, &nid_val) != 0) {
-		printk(KERN_INFO "nid could not be parsed\n");
+		printk(KERN_INFO "Invalid NID specified.\n");
 		goto err;
 	}
 	printk(KERN_INFO "nid is: %u\n", nid_val);
 
 	// parse policy mode: blacklist or whitelist
 	if (strnicmp(mode, mode_blacklist, strlen(mode_blacklist)) == 0) {
-	policy_mode = 1;
-	mode = mode + strlen(mode_blacklist) + 1;
+		policy_mode = 1;
+		mode = mode + strlen(mode_blacklist) + 1;
 	} else if (strnicmp(mode, mode_whitelist, strlen(mode_whitelist)) == 0) {
-	policy_mode = 2;
-	mode = mode + strlen(mode_whitelist) + 1;
+		policy_mode = 2;
+		mode = mode + strlen(mode_whitelist) + 1;
 	} else {
-	printk(KERN_INFO "policy mode could not be parsed\n");
-	goto err;
+		printk(KERN_INFO "Invalid policy mode specified.\n");
+		goto err;
 	}
-	printk(KERN_INFO "Policy mode is:%d\n", policy_mode);
-	
-	// following mode is a list of IP addresses
-	// parse them in a loop and save them to a local var
-	// need them as unsigned ints (specifically __u8's)
-	__be32 ip_addrs[MAX_IPs];
-	
-	char *ip = mode;
-	char *end_of_input = buf + count;
-	printk(KERN_INFO "ip is now: %s\n", ip);
-	int ip_i=0;
+	printk(KERN_INFO "Policy mode is: %d\n", policy_mode);
+
+	// Parse IP addresses and save them	
+	// need octals to be unsigned ints (specifically __u8's)
+	ip = mode; // beginning of IP address list
+
 	for (ip_i=0; ; ip_i++) {
-		// split input
-		char *end_of_ip = strchr(ip, ' ');
-		if (end_of_ip) {
-			// null terminate to allow strchr, etc. to work on intermediate strings
+		end_of_ip = strchr(ip, ' '); // Split IP by space
+		if (end_of_ip) { // null terminate to allow strchr, etc. to work on intermediate strings
 			*end_of_ip = '\0';	
-		} else {
-			// if end_of_ip is null we're at the end of our input string
+		} else { // we're at the end of our input string
 			end_of_ip = end_of_input;
 		}
 
-		// now, from ip to end_of_ip is the ip addr
-		// split by '.' (this is ipv4 only)
-		char *octal_start = ip;
-		__u8 octals[4];
-		int octal_i = 0;
+		// Split IP address into octals
+		octal_start = ip;
+
 		for (octal_i=0; octal_i<4; octal_i++) {
-			char *end_of_octal = strchr(octal_start, '.');
+			end_of_octal = strchr(octal_start, '.');
 			if (!end_of_octal) {
-				// can be last octal
-				if (octal_i != 3) { 
-					printk(KERN_INFO "Octal was: %s\n", octal_start);
-					printk(KERN_INFO "IP octal incorrectly formatted, quitting...\n");
+				if (octal_i != 3) { // No "." separator
+					printk(KERN_INFO "Syntax error: IP octal not found.\n");
 					goto err;
 				}
-
-				// no '.' at end, just mark end as end of IP
-				end_of_octal = end_of_ip;
+				end_of_octal = end_of_ip; // Last octal has no "." separator
 			} else {
 				*end_of_octal = '\0'; // null terminate to use kstrtouint
 			}
 
-			// Now, convert to __u8
-			__u8 octal_val;
-			printk(KERN_INFO "octal start is: %s\n", octal_start);
+			// todo (jugonz97): convert to __u8 in standards-compliant way
 			if (kstrtouint(octal_start, 10, &octal_val) != 0) {
-				printk(KERN_INFO "octal could not be parsed correctly\n");
+				printk(KERN_INFO "Invalid IP octal.\n");
 				goto err;
 			}
-			// Now, store in octals
-			octals[octal_i] = octal_val;			
+
+			octals[octal_i] = octal_val; // store to be later converted into an IP
 			octal_start = end_of_octal + 1;
-			printk(KERN_INFO "octal val was: %d\n", octal_val);
 		}
-		
-		// convert octals to a _be32 and store
-		__be32 parsed_IP = make_ipaddr(octals[0], octals[1], octals[2], octals[3]);
+	
+		// Make IP address type from octals	
+		parsed_IP = make_ipaddr(octals[0], octals[1], octals[2], octals[3]);
 		ip_addrs[ip_i] = parsed_IP;
 		printk(KERN_INFO "Parsed IP is: %d %d %d %d\n", octals[0], octals[1], octals[2], octals[3]);		
-		ip = end_of_ip + 1;
+
+		ip = end_of_ip + 1; // Parse next IP...
 		if (ip > end_of_input) {
 			break; // check for pointer overrun
 		}
@@ -244,10 +237,10 @@ static ssize_t sysfile_add_to_kfifo(struct device* dev, struct device_attribute*
 	goto ok;
 
 err:
-	printk(KERN_INFO "message did not parse correctly...\n");
+	printk(KERN_INFO "Set policy message unsuccessfully parsed.\n");
 	goto end;
 ok:	
-	printk(KERN_INFO "message parsed correctly!\n");
+	printk(KERN_INFO "Set policy message successfully parsed.\n");
 end:
 	return count;
 }
