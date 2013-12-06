@@ -10,12 +10,22 @@
 #include <linux/sched.h>
 #include <linux/uidgid.h>
 
-#define HASH_TABLE_SIZE 8
+#define HASH_TABLE_SIZE 1021
 static struct _hashtable *policymap;
 
-#define FACEBOOK_ADDR 460258477
 static struct nf_hook_ops p;
 
+__be32 make_ipaddr(__u8 b1, __u8 b2, __u8 b3, __u8 b4) {
+	__be32 addr = 0;
+	addr |= b4;
+	addr = addr << 8;
+	addr |= b3;
+	addr = addr << 8;
+	addr |= b2;
+	addr = addr << 8;
+	addr |= b1;
+	return addr;
+}
 
 unsigned int hook_function(unsigned int hooknum,
 			struct sk_buff *skb,
@@ -50,6 +60,8 @@ unsigned int hook_function(unsigned int hooknum,
 static int nfilter_init(void)
 {
 	int retput;
+	__be32 mitaddr, fbaddr;
+
 	printk(KERN_INFO "Loaded nfilter module\n");
 
 	p.hook = hook_function;
@@ -62,8 +74,11 @@ static int nfilter_init(void)
 	/* Initialize the policymap */
 	policymap = init_hash_table(HASH_TABLE_SIZE);
 
-	/* Block facebook for nid 42 */
-	retput = put(policymap, 42, FACEBOOK_ADDR, true);
+	/* Some test policies */
+	mitaddr = make_ipaddr(18, 9, 22, 69);
+	fbaddr = make_ipaddr(173, 252, 110, 27);
+	retput = put(policymap, 43, mitaddr, true);
+	retput = put(policymap, 42, fbaddr, true);
 
 	return 0;
 }
