@@ -16,9 +16,11 @@
 #include <linux/cdev.h>
 #include <linux/string.h>
 #include <linux/uidgid.h>
+#include <uapi/linux/ip.h>
 
 #define PROG_NAME "simpleCharDriver"
 #define MAX_MSGS 64
+#define MAX_IPs 64
 
 // global vars: sue me
 static dev_t device_nums;
@@ -79,6 +81,18 @@ static int release_dummy(struct inode *inode, struct file *filp) {
 	return 0;
 }
 
+__be32 make_ipaddr(__u8 b1, __u8 b2, __u8 b3, __u8 b4) {
+        __be32 addr = 0;
+        addr |= b4;
+        addr = addr << 8;
+        addr |= b3;
+        addr = addr << 8;
+        addr |= b2;
+        addr = addr << 8;
+        addr |= b1;
+        return addr;
+}
+
 // This defines how the file in /dev is arranged
 static struct file_operations f_ops = {
 	.open = open_dummy,
@@ -89,11 +103,19 @@ static struct file_operations f_ops = {
 // Writing to queue using sysfs
 static ssize_t sysfile_add_to_kfifo(struct device* dev, struct device_attribute* attr,
 	const char* buf, size_t count) {
-	ssize_t copied;
 	
 	// STRING CONSTANTS...refactor these into a .h file sometime soon
 	const char * set_prefix = "set";
+	const char * get_prefix = "get";
+	const char * mode_blacklist = "b";
+	const char * mode_whitelist = "w";
+	
+	int policy_mode = 0;
+	/* 0 is unset, 1 is blacklist, 2 whitelist */	
+
+	// check set prefix
 	if ( strnicmp(buf, set_prefix, strlen(set_prefix)) != 0 ) {
+		printk("invalid prefix found!\n");
 		goto err;
 	}	
 	// buf holds the text to parse for a policy to query
@@ -128,28 +150,97 @@ static ssize_t sysfile_add_to_kfifo(struct device* dev, struct device_attribute*
 	// now, parse UID/NID
 	// The following code depends on the fact that
 	// uid_t and gid_t are unsigned ints
-	unsigned int uid_val_as_uint;
-	if (kstrtouint(uid, 10, &uid_val_as_uint) != 0) {
+	uid_t uid_val;
+	if (kstrtouint(uid, 10, &uid_val) != 0) {
 		printk(KERN_INFO "uid could not be parsed\n");
 		goto err;
 	}
-	// convert to uid_t
-	uid_t uid_val = uid_val_as_uint;
-	// print
-	printk(KERN_INFO "uid is:%u\n", uid_val);
+	printk(KERN_INFO "uid is: %u\n", uid_val);
 
-	// parse gid
-	unsigned int nid_val_as_uint;
-	if (kstrtouint(nid, 10, &nid_val_as_uint) != 0) {
+	gid_t nid_val;
+	if (kstrtouint(nid, 10, &nid_val) != 0) {
 		printk(KERN_INFO "nid could not be parsed\n");
 		goto err;
 	}
-	// covert to gid_t
-	gid_t nid_val = nid_val_as_uint;
-	// print
 	printk(KERN_INFO "nid is: %u\n", nid_val);
 
+	// parse policy mode: blacklist or whitelist
+	if (strnicmp(mode, mode_blacklist, strlen(mode_blacklist)) == 0) {
+	policy_mode = 1;
+	mode = mode + strlen(mode_blacklist) + 1;
+	} else if (strnicmp(mode, mode_whitelist, strlen(mode_whitelist)) == 0) {
+	policy_mode = 2;
+	mode = mode + strlen(mode_whitelist) + 1;
+	} else {
+	printk(KERN_INFO "policy mode could not be parsed\n");
+	goto err;
+	}
+	printk(KERN_INFO "Policy mode is:%d\n", policy_mode);
+	
 	// following mode is a list of IP addresses
+	// parse them in a loop and save them to a local var
+	// need them as unsigned ints (specifically __u8's)
+	__be32 ip_addrs[MAX_IPs];
+	
+	char *ip = mode;
+	char *end_of_input = buf + count;
+	printk(KERN_INFO "ip is now: %s\n", ip);
+	int ip_i=0;
+	for (ip_i=0; ; ip_i++) {
+		// split input
+		char *end_of_ip = strchr(ip, ' ');
+		if (end_of_ip) {
+			// null terminate to allow strchr, etc. to work on intermediate strings
+			*end_of_ip = '\0';	
+		} else {
+			// if end_of_ip is null we're at the end of our input string
+			end_of_ip = end_of_input;
+		}
+
+		// now, from ip to end_of_ip is the ip addr
+		// split by '.' (this is ipv4 only)
+		char *octal_start = ip;
+		__u8 octals[4];
+		int octal_i = 0;
+		for (octal_i=0; octal_i<4; octal_i++) {
+			char *end_of_octal = strchr(octal_start, '.');
+			if (!end_of_octal) {
+				// can be last octal
+				if (octal_i != 3) { 
+					printk(KERN_INFO "Octal was: %s\n", octal_start);
+					printk(KERN_INFO "IP octal incorrectly formatted, quitting...\n");
+					goto err;
+				}
+
+				// no '.' at end, just mark end as end of IP
+				end_of_octal = end_of_ip;
+			} else {
+				*end_of_octal = '\0'; // null terminate to use kstrtouint
+			}
+
+			// Now, convert to __u8
+			__u8 octal_val;
+			printk(KERN_INFO "octal start is: %s\n", octal_start);
+			if (kstrtouint(octal_start, 10, &octal_val) != 0) {
+				printk(KERN_INFO "octal could not be parsed correctly\n");
+				goto err;
+			}
+			// Now, store in octals
+			octals[octal_i] = octal_val;			
+			octal_start = end_of_octal + 1;
+			printk(KERN_INFO "octal val was: %d\n", octal_val);
+		}
+		
+		// convert octals to a _be32 and store
+		__be32 parsed_IP = make_ipaddr(octals[0], octals[1], octals[2], octals[3]);
+		ip_addrs[ip_i] = parsed_IP;
+		printk(KERN_INFO "Parsed IP is: %d %d %d %d\n", octals[0], octals[1], octals[2], octals[3]);		
+		ip = end_of_ip + 1;
+		if (ip > end_of_input) {
+			break; // check for pointer overrun
+		}
+	}	
+
 	goto ok;
 
 err:
@@ -160,6 +251,7 @@ ok:
 end:
 	return count;
 }
+
 
 // Clear queue using sysfs
 static ssize_t sysfile_clear_kfifo(struct device* dev, struct device_attribute* attr,
