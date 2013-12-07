@@ -30,7 +30,7 @@ __be32 make_ipaddr(__u8 b1, __u8 b2, __u8 b3, __u8 b4) {
 int blockpkt(uid_t uid, gid_t nid, __be32 addr)
 {
 	struct _list *policy;
-	policy = get(policymap, uid, nid, addr);
+	policy = get(policymap, uid, nid);
 	if (!policy)
 		return 0;
 
@@ -89,8 +89,12 @@ static int nfilter_init(void)
 	/* Some test policies */
 	mitaddr = make_ipaddr(18, 9, 22, 69);
 	fbaddr = make_ipaddr(173, 252, 110, 27);
+	/*
 	retput = put(policymap, 1000, 43, mitaddr, true);
 	retput = put(policymap, 1000, 42, fbaddr, true);
+	*/
+	retput = put(policymap, 1000, 43, true);
+	retput = put(policymap, 1000, 42, true);
 
 	return 0;
 }

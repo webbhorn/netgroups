@@ -51,27 +51,25 @@ void free(struct _hashtable *hashtable) {
 }
 
 /*
- * HASH: (nid, ipv4addr) --> u32
+ * HASH: (uid, nid) --> u32
  * Could do better here. Good enough for now?
  */
 __u32 hash(struct _nidkey *key, struct _hashtable *hashtable) {
 	__u32 hashvalue;
-	hashvalue = (__u32)key->nid * (__u32)key->ip_addr * (__u32)key->uid;
+	hashvalue = (__u32)key->nid * (__u32)key->uid;
 	return hashvalue % hashtable->size;
 }
 
 int key_eq(struct _nidkey *a, struct _nidkey *b) {
-	return (((__u32)a->nid == (__u32)b->nid) && 
-	        ((__u32)a->ip_addr == (__u32)b->ip_addr) &&
+	return (((__u32)a->nid == (__u32)b->nid) &&
 	        ((__u32)a->uid == (__u32)b->uid));
 }
 
-struct _list *get(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_addr) {
+struct _list *get(struct _hashtable *hashtable, uid_t uid, gid_t nid) {
 	struct _list *list;
 	struct _nidkey key = {
 		.uid = uid,
-		.nid = nid,
-		.ip_addr = ip_addr,
+		.nid = nid
 	};
 
 	__u32 hashval = hash(&key, hashtable);
@@ -82,7 +80,7 @@ struct _list *get(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_
 	return NULL;
 }
 
-int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_addr, int blocked) {
+int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, int blocked) {
 	struct _nidkey *key;
 	struct _nidpolicy *val;
 	struct _list *new_list;
@@ -98,7 +96,6 @@ int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_addr, int 
 		return -1;
 	key->uid = uid;
 	key->nid = nid;
-	key->ip_addr = ip_addr;
 
 	val = kmalloc(sizeof(struct _nidpolicy), GFP_KERNEL);
 	if (!val) {
@@ -106,6 +103,7 @@ int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_addr, int 
 		return -1;
 	}
 	val->blocked = blocked;
+	/* Add IPs to val policy */
 
 	hashval = hash(key, hashtable);	
 	new_list = kmalloc(sizeof(struct _list), GFP_KERNEL);
@@ -115,7 +113,7 @@ int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_addr, int 
 		return -1;
 	}
 
-	current_list = get(hashtable, uid, nid, ip_addr);
+	current_list = get(hashtable, uid, nid);
 	if (current_list != NULL) {
 		kfree(key);
 		kfree(val);

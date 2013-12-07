@@ -7,10 +7,10 @@
 struct _nidkey {
 	uid_t uid;
 	gid_t nid;
-	__be32 ip_addr;
 };
 
 struct _nidpolicy {
+	int mode;  /* 0=blacklist, 1=whitelist */
 	int blocked;
 };
 
@@ -35,10 +35,10 @@ struct _hashtable *init_hash_table(int size);
 __u32 hash(struct _nidkey *key, struct _hashtable *hashtable);
 
 /* Get policy by key */
-struct _list *get(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_addr);
+struct _list *get(struct _hashtable *hashtable, uid_t uid, gid_t nid);
 
 /* Add mapping: (nid, ip) --> policy */
-int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, __be32 ip_addr, int blocked);
+int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, int blocked);
 
 /* Cleanup hash table and all of its lists */
 void free(struct _hashtable *hashtable);
