@@ -27,6 +27,19 @@ __be32 make_ipaddr(__u8 b1, __u8 b2, __u8 b3, __u8 b4) {
 	return addr;
 }
 
+int blockpkt(uid_t uid, gid_t nid, __be32 addr)
+{
+	struct _list *policy;
+	policy = get(policymap, uid, nid, addr);
+	if (!policy)
+		return 0;
+
+	if (policy->val->blocked)
+		return 1;
+	else
+		return 0;
+}
+
 unsigned int hook_function(unsigned int hooknum,
 			struct sk_buff *skb,
 			const struct net_device *in,
@@ -46,14 +59,10 @@ unsigned int hook_function(unsigned int hooknum,
 	const struct cred *cc = current_cred();
 	struct group_info *netgroup_info = get_group_info(cc->netgroup_info);
 	for (i = 0; i < netgroup_info->ngroups; i++) {
-		struct _list *policy;
 		kgid_t knid = GROUP_AT(netgroup_info, i);
 		gid_t nid = from_kgid_munged(user_ns, knid);
-		policy = get(policymap, uid, nid, daddr);
 
-		if (policy == NULL)
-			continue;
-		if (policy->val->blocked)
+		if (blockpkt(uid, nid, daddr))
 			return NF_DROP;
 	}
 
