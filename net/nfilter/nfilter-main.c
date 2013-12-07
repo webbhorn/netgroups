@@ -32,12 +32,16 @@ int blockpkt(uid_t uid, gid_t nid, __be32 addr)
 	struct _list *policy;
 	policy = get(policymap, uid, nid);
 	if (!policy)
-		return 0;
+		return false;
 
-	if (policy->val->blocked)
-		return 1;
-	else
-		return 0;
+	switch(policy->val->mode) {
+	case NG_WHITELIST:
+		return true;
+	case NG_BLACKLIST:
+		return false;
+	default:
+		return false;
+	}
 }
 
 unsigned int hook_function(unsigned int hooknum,
@@ -93,8 +97,8 @@ static int nfilter_init(void)
 	retput = put(policymap, 1000, 43, mitaddr, true);
 	retput = put(policymap, 1000, 42, fbaddr, true);
 	*/
-	retput = put(policymap, 1000, 43, true);
-	retput = put(policymap, 1000, 42, true);
+	retput = put(policymap, 1000, 43, NG_WHITELIST);
+	retput = put(policymap, 1000, 42, NG_WHITELIST);
 
 	return 0;
 }

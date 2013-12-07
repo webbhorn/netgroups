@@ -80,7 +80,7 @@ struct _list *get(struct _hashtable *hashtable, uid_t uid, gid_t nid) {
 	return NULL;
 }
 
-int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, int blocked) {
+int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, ngmode_t mode) {
 	struct _nidkey *key;
 	struct _nidpolicy *val;
 	struct _list *new_list;
@@ -102,7 +102,7 @@ int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, int blocked) {
 		kfree(key);	
 		return -1;
 	}
-	val->blocked = blocked;
+	val->mode = mode;
 	/* Add IPs to val policy */
 
 	hashval = hash(key, hashtable);	

@@ -4,14 +4,18 @@
 #include <linux/uidgid.h>
 #include <uapi/linux/ip.h>
 
+typedef enum {
+	NG_WHITELIST,
+	NG_BLACKLIST
+} ngmode_t;
+
 struct _nidkey {
 	uid_t uid;
 	gid_t nid;
 };
 
 struct _nidpolicy {
-	int mode;  /* 0=blacklist, 1=whitelist */
-	int blocked;
+	ngmode_t mode;  /* 0=blacklist, 1=whitelist */
 };
 
 struct _list {
@@ -38,7 +42,7 @@ __u32 hash(struct _nidkey *key, struct _hashtable *hashtable);
 struct _list *get(struct _hashtable *hashtable, uid_t uid, gid_t nid);
 
 /* Add mapping: (nid, ip) --> policy */
-int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, int blocked);
+int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, ngmode_t mode);
 
 /* Cleanup hash table and all of its lists */
 void free(struct _hashtable *hashtable);
