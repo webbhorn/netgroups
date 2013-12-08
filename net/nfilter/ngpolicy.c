@@ -7,6 +7,7 @@
 static struct _hashtable *ngpolicymap;
 
 rwlock_t ngpolicymap_rwlk; 
+
 EXPORT_SYMBOL(ngpolicymap_rwlk);
 
 static void free_ip_list(struct _ip_list *list) {
@@ -54,30 +55,49 @@ __be32 make_ipaddr(__u8 b1, __u8 b2, __u8 b3, __u8 b4) {
 
 EXPORT_SYMBOL(make_ipaddr);
 
+/*
+ * Allocate and initialize the netgroups policy table.
+ *
+ * Caller is responsible for acquiring and releasing write lock on
+ * ngpolicymap_rwlk during use.
+ *
+ * Returns:
+ *	NG_SUCCESS on successful init.
+ *	NG_ERRARG if size < 1.
+ *	NG_ERRMAP if the map is already allocated or there is a problem in the
+ *		data structure.
+ */
 int init_ngpolicymap(int size) {
 	int i;
 	if (size < 1)
-		return -1;
+		return NG_ERRARG;
 	
 	ngpolicymap = kmalloc(sizeof(struct _hashtable), GFP_KERNEL);
 	if (!ngpolicymap)
-		return -1;
+		return NG_ERRMAP;
 	
 	ngpolicymap->table = kmalloc(sizeof(struct _list) * size, GFP_KERNEL);
 	if (!ngpolicymap->table) {
 		kfree(ngpolicymap);
-		return -1;
+		return NG_ERRMAP;
 	}
 
 	ngpolicymap->size = size;
 	for (i = 0; i < size; i++)
 		ngpolicymap->table[i] = NULL;
 		
-	return 0;
+	return NG_SUCCESS;
 }
 
 EXPORT_SYMBOL(init_ngpolicymap);
 
+/*
+ * Free all of the memory used to store policies, including all of the
+ * recursive structures.
+ *
+ * Caller is responsible for acquiring and releasing write lock on
+ * ngpolicymap_rwlk during use.
+ */
 void free_ngpolicymap() {
 	int i;
 	struct _list *list, *temp;
@@ -104,6 +124,16 @@ void free_ngpolicymap() {
 
 EXPORT_SYMBOL(free_ngpolicymap);
 
+/*
+ * Look up netgroups policy for (uid, nid) tuple.
+ *
+ * Caller is responsible for acquiring and releasing read lock on
+ * ngpolicymap_rwlk during use.
+ *
+ * Returns:
+ *	Pointer to a struct _list if item is found.
+ *	NULL if policy does not exist.
+ */
 struct _list *get_ngpolicy(uid_t uid, gid_t nid) {
 	struct _list *list;
 	struct _hashtable *hashtable = ngpolicymap;
@@ -122,6 +152,19 @@ struct _list *get_ngpolicy(uid_t uid, gid_t nid) {
 
 EXPORT_SYMBOL(get_ngpolicy);
 
+/*
+ * Create a new netgroups policy for a (uid, nid) tuple under the specified
+ * mode (whitelist or blacklist).
+ *
+ * Caller is responsible for acquiring and releasing write lock on
+ * ngpolicymap_rwlk during use.
+ *
+ * Returns:
+ *	NG_SUCCESS if policy is successfully added.
+ *	NG_EXISTS if there is already a policy in table for (uid, nid).
+ *	NG_ERRMAP if the policy table is unitialized or has a problem.
+ *	NG_NOMEM if memory allocation of new policy failed.
+ */
 int put_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
 	struct _hashtable *hashtable;
 	struct _nidkey *key;
@@ -132,19 +175,19 @@ int put_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
 
 	hashtable = ngpolicymap;
 	if (!hashtable)
-		return -1;
+		return NG_ERRMAP;
 
 	/* Prepare structures */
 	key = kmalloc(sizeof(struct _nidkey), GFP_KERNEL);
 	if (!key)
-		return -1;
+		return NG_NOMEM;
 	key->uid = uid;
 	key->nid = nid;
 
 	val = kmalloc(sizeof(struct _nidpolicy), GFP_KERNEL);
 	if (!val) {
 		kfree(key);	
-		return -1;
+		return NG_NOMEM;
 	}
 	val->mode = mode;
 	val->ips = NULL;
@@ -154,7 +197,7 @@ int put_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
 	if (!new_list) {
 		kfree(key);
 		kfree(val);
-		return -1;
+		return NG_NOMEM;
 	}
 
 	current_list = get_ngpolicy(uid, nid);
@@ -162,39 +205,56 @@ int put_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
 		kfree(key);
 		kfree(val);
 		kfree(new_list);
-		return 2;  /* already exists */
+		return NG_EXISTS;  /* policy for (uid, nid) already exists */
 	}
 	new_list->key = key;
 	new_list->val = val;
 	new_list->next = hashtable->table[hashval];
 	hashtable->table[hashval] = new_list;
 
-	return 0;
+	return NG_SUCCESS;
 }
 
 EXPORT_SYMBOL(put_ngpolicy);
 
+/*
+ * Extend an existing policy to include another ip address.
+ *
+ * Caller is responsible for acquiring and releasing write lock on
+ * ngpolicymap_rwlk during use.
+ *
+ * Returns:
+ *	NG_SUCCESS if ip was successfully added.
+ *	NG_ERRARG if the provided policy is invalid.
+ *	NG_NOMEM if memory allocation of new ip failed.
+ */
 int add_ip_to_ngpolicy(struct _nidpolicy *policy, __be32 addr) {
 	struct _ip_list *head;
 	struct _ip_list *new;
 
 	if (!policy)
-		return -1;
+		return NG_ERRARG;
 	head = policy->ips;
 
 	new = kmalloc(sizeof(struct _ip_list), GFP_KERNEL);
 	if (!new)
-		return -1;
+		return NG_NOMEM;
 	new->addr = addr;
 	new->next = head;
 
 	policy->ips = new;
 	policy->size += 1;
-	return 0;
+	return NG_SUCCESS;
 }
 
 EXPORT_SYMBOL(add_ip_to_ngpolicy);
 
+/*
+ * Determine if a netgroups policy has a rule for a particular ip address.
+ *
+ * Caller is responsible for acquiring and releasing read lock on
+ * ngpolicymap_rwlk during use.
+ */
 int ngpolicy_contains_ip(struct _nidpolicy *policy, __be32 addr) {
 	struct _ip_list *list;
 	for (list = policy->ips; list != NULL; list = list->next)

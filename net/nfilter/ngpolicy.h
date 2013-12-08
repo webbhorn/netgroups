@@ -12,6 +12,15 @@ typedef enum {
 	NG_BLACKLIST
 } ngmode_t;
 
+enum {
+	NG_SUCCESS,
+	NG_ERRARG,
+	NG_ERRMAP,
+	NG_NOMEM,
+	NG_EXISTS,
+	NG_OTHER,
+};
+
 struct _nidkey {
 	uid_t uid;
 	gid_t nid;
