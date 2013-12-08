@@ -9,9 +9,11 @@
 #include <linux/cred.h>
 #include <linux/sched.h>
 #include <linux/uidgid.h>
+#include <linux/spinlock.h>
 
 #define HASH_TABLE_SIZE 1021
 static struct _hashtable *policymap;
+static rwlock_t policy_rwlk; 
 
 static struct nf_hook_ops p;
 
@@ -30,24 +32,34 @@ __be32 make_ipaddr(__u8 b1, __u8 b2, __u8 b3, __u8 b4) {
 int blockpkt(uid_t uid, gid_t nid, __be32 addr)
 {
 	struct _list *policy;
+	int block;
+
+	read_lock(&policy_rwlk);
 	policy = get(policymap, uid, nid);
-	if (!policy)
+	if (!policy) {
+		read_unlock(&policy_rwlk);
 		return false;
+	}
 
 	switch(policy->val->mode) {
 	case NG_WHITELIST:
 		if (policy_contains_ip(policy->val, addr))
-			return false;  /* do not block */
+			block = false;
 		else
-			return true;  /* block */
+			block = true;
+		break;
 	case NG_BLACKLIST:
 		if (policy_contains_ip(policy->val, addr))
-			return true;  /* block */
+			block = true;
 		else
-			return false;  /* do not block */
+			block = false;
+		break;
 	default:
-		return false;  /* do not block */
+		block = false;  /* do not block */
+		break;
 	}
+	read_unlock(&policy_rwlk);
+	return block;
 }
 
 unsigned int hook_function(unsigned int hooknum,
@@ -95,6 +107,8 @@ static int nfilter_init(void)
 	nf_register_hook(&p);
 
 	/* Initialize the policymap */
+	rwlock_init(&policy_rwlk);
+	write_lock(&policy_rwlk);
 	policymap = init_hash_table(HASH_TABLE_SIZE);
 
 	/* Some test policies */
@@ -108,6 +122,7 @@ static int nfilter_init(void)
 	retput = put(policymap, 1000, 43, NG_WHITELIST);
 	policy = get(policymap, 1000, 43);
 	retput = add_ip_to_policy(policy->val, mitaddr);
+	write_unlock(&policy_rwlk);
 
 	return 0;
 }
@@ -115,7 +130,9 @@ static int nfilter_init(void)
 static void nfilter_exit(void)
 {
 	nf_unregister_hook(&p);
+	write_lock(&policy_rwlk);
 	free(policymap);
+	write_unlock(&policy_rwlk);
 	printk(KERN_INFO "Removed nfilter module\n");
 }
 
