@@ -28,6 +28,22 @@ struct _hashtable *init_hash_table(int size) {
 	return hashtable;
 }
 
+void free_ip_list(struct _ip_list *list) {
+	struct _ip_list *temp;
+	while (list != NULL) {
+		temp = list;
+		list = list->next;
+		kfree(temp);
+	}
+}
+
+void free_nidpolicy(struct _nidpolicy *policy) {
+	if (!policy)
+		return;
+	free_ip_list(policy->ips);
+	kfree(policy);
+}
+
 void free(struct _hashtable *hashtable) {
 	int i;
 	struct _list *list, *temp;
@@ -41,7 +57,7 @@ void free(struct _hashtable *hashtable) {
 			temp = list;
 			list = list->next;
 			kfree(temp->key);
-			kfree(temp->val);
+			free_nidpolicy(temp->val);
 			kfree(temp);
 		}
 	}
@@ -103,7 +119,7 @@ int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, ngmode_t mode) {
 		return -1;
 	}
 	val->mode = mode;
-	/* Add IPs to val policy */
+	val->ips = NULL;
 
 	hashval = hash(key, hashtable);	
 	new_list = kmalloc(sizeof(struct _list), GFP_KERNEL);
@@ -126,4 +142,31 @@ int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, ngmode_t mode) {
 	hashtable->table[hashval] = new_list;
 
 	return 0;
+}
+
+int add_ip_to_policy(struct _nidpolicy *policy, __be32 addr) {
+	struct _ip_list *head;
+	struct _ip_list *new;
+
+	if (!policy)
+		return -1;
+	head = policy->ips;
+
+	new = kmalloc(sizeof(struct _ip_list), GFP_KERNEL);
+	if (!new)
+		return -1;
+	new->addr = addr;
+	new->next = head;
+
+	policy->ips = new;
+	policy->size += 1;
+	return 0;
+}
+
+int policy_contains_ip(struct _nidpolicy *policy, __be32 addr) {
+	struct _ip_list *list;
+	for (list = policy->ips; list != NULL; list = list->next)
+		if (list->addr == addr)
+			return true;
+	return false;
 }

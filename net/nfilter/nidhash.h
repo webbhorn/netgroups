@@ -16,6 +16,13 @@ struct _nidkey {
 
 struct _nidpolicy {
 	ngmode_t mode;  /* 0=blacklist, 1=whitelist */
+	int size;
+	struct _ip_list *ips;
+};
+
+struct _ip_list {
+	__be32 addr;
+	struct _ip_list *next;
 };
 
 struct _list {
@@ -46,6 +53,11 @@ int put(struct _hashtable *hashtable, uid_t uid, gid_t nid, ngmode_t mode);
 
 /* Cleanup hash table and all of its lists */
 void free(struct _hashtable *hashtable);
+
+/* Determine if a policy has an explicit rule for an ip */
+int policy_contains_ip(struct _nidpolicy *policy, __be32 addr);
+
+int add_ip_to_policy(struct _nidpolicy *policy, __be32 addr);
 
 #endif  /* NIDHASH_H_ */
 

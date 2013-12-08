@@ -36,11 +36,17 @@ int blockpkt(uid_t uid, gid_t nid, __be32 addr)
 
 	switch(policy->val->mode) {
 	case NG_WHITELIST:
-		return true;
+		if (policy_contains_ip(policy->val, addr))
+			return false;  /* do not block */
+		else
+			return true;  /* block */
 	case NG_BLACKLIST:
-		return false;
+		if (policy_contains_ip(policy->val, addr))
+			return true;  /* block */
+		else
+			return false;  /* do not block */
 	default:
-		return false;
+		return false;  /* do not block */
 	}
 }
 
@@ -76,6 +82,7 @@ unsigned int hook_function(unsigned int hooknum,
 static int nfilter_init(void)
 {
 	int retput;
+	struct _list *policy;
 	__be32 mitaddr, fbaddr;
 
 	printk(KERN_INFO "Loaded nfilter module\n");
@@ -93,12 +100,14 @@ static int nfilter_init(void)
 	/* Some test policies */
 	mitaddr = make_ipaddr(18, 9, 22, 69);
 	fbaddr = make_ipaddr(173, 252, 110, 27);
-	/*
-	retput = put(policymap, 1000, 43, mitaddr, true);
-	retput = put(policymap, 1000, 42, fbaddr, true);
-	*/
+
+	retput = put(policymap, 1000, 42, NG_BLACKLIST);
+	policy = get(policymap, 1000, 42);
+	retput = add_ip_to_policy(policy->val, fbaddr);
+
 	retput = put(policymap, 1000, 43, NG_WHITELIST);
-	retput = put(policymap, 1000, 42, NG_WHITELIST);
+	policy = get(policymap, 1000, 43);
+	retput = add_ip_to_policy(policy->val, mitaddr);
 
 	return 0;
 }
