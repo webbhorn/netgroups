@@ -218,6 +218,71 @@ int put_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
 EXPORT_SYMBOL(put_ngpolicy);
 
 /*
+ * Create a new netgroups policy for a (uid, nid) tuple under the specified
+ * mode (whitelist or blacklist), replacing any existing policies for that
+ * (uid, nid) tuple.
+ *
+ * Caller is responsible for acquiring and releasing write lock on
+ * ngpolicymap_rwlk during use.
+ *
+ * Returns:
+ *	NG_SUCCESS if policy is successfully added.
+ *	NG_ERRMAP if the policy table is unitialized or has a problem.
+ *	NG_NOMEM if memory allocation of new policy failed.
+ */
+int putr_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
+	struct _hashtable *hashtable;
+	struct _nidkey *key;
+	struct _nidpolicy *val;
+	struct _list *new_list;
+	struct _list *current_list;
+	__u32 hashval;
+
+	hashtable = ngpolicymap;
+	if (!hashtable)
+		return NG_ERRMAP;
+
+	/* Prepare structures */
+	key = kmalloc(sizeof(struct _nidkey), GFP_KERNEL);
+	if (!key)
+		return NG_NOMEM;
+	key->uid = uid;
+	key->nid = nid;
+
+	val = kmalloc(sizeof(struct _nidpolicy), GFP_KERNEL);
+	if (!val) {
+		kfree(key);	
+		return NG_NOMEM;
+	}
+	val->mode = mode;
+	val->ips = NULL;
+
+	hashval = hash(key, hashtable);	
+	new_list = kmalloc(sizeof(struct _list), GFP_KERNEL);
+	if (!new_list) {
+		kfree(key);
+		kfree(val);
+		return NG_NOMEM;
+	}
+
+	current_list = get_ngpolicy(uid, nid);
+	if (current_list != NULL) {
+		free_ip_list(current_list->val->ips);
+		current_list->val->size = 0;
+		current_list->val->mode = mode;
+	}
+	new_list->key = key;
+	new_list->val = val;
+	new_list->next = hashtable->table[hashval];
+	hashtable->table[hashval] = new_list;
+
+	return NG_SUCCESS;
+}
+
+EXPORT_SYMBOL(putr_ngpolicy);
+
+
+/*
  * Extend an existing policy to include another ip address.
  *
  * Caller is responsible for acquiring and releasing write lock on

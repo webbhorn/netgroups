@@ -52,6 +52,7 @@ struct _hashtable {
 extern int	init_ngpolicymap(int size);
 extern struct _list* get_ngpolicy(uid_t uid, gid_t nid);
 extern int	put_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode);
+extern int	putr_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode);
 extern void	free_ngpolicymap(void);
 extern int	ngpolicy_contains_ip(struct _nidpolicy *policy, __be32 addr);
 extern int	add_ip_to_ngpolicy(struct _nidpolicy *policy, __be32 addr);
