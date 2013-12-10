@@ -218,6 +218,9 @@ int put_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
 EXPORT_SYMBOL(put_ngpolicy);
 
 /*
+ * TODO(webbhorn): Refactor put_ and putr_ to recycle code. This ugly
+ * copypasta right now.
+ *
  * Create a new netgroups policy for a (uid, nid) tuple under the specified
  * mode (whitelist or blacklist), replacing any existing policies for that
  * (uid, nid) tuple.
