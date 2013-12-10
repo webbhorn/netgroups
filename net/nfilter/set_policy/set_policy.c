@@ -26,40 +26,125 @@ const char * set_prefix = "set";
 const char * mode_blacklist = "b";
 const char * mode_whitelist = "w";	
 
-static ssize_t read_dummy(struct file *filp, char __user *buf,
-		size_t count, loff_t *f_pos) {
-	char tocopy[] = "Function not implemented\n";
-	
+// Helper function to get an array of __u8's from an IP.
+void get_ip_octals(__be32 ip_addr, __u8 *toPut) {
+	__u8 octal;
+        int i;
+
+        for (i=3; i>=0; i--) {
+                octal = ip_addr & 0xFF; // get low 8 bits as __u8
+                toPut[i] = octal;
+                ip_addr = ip_addr >> 8;
+        }
+}
+
+// /dev read function. On read, prints out policies for given UID/NID.
+static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) {
+	char noOutputMsg[] = "No policies for UID 1000 and NID 777\n";
+	char toOutput[512];
+
+	uid_t uid = 1000;
+	gid_t nid = 43;
+
+	struct _list *policies;
+	struct _nidpolicy *current_policy;
+	struct _nidkey *current_policy_key;
+	struct _ip_list *current_policy_ips;
+	__u8 ip_octals[4];
+
+	int policy_ip_i; // index for IP list traversal
+
+
 	if (*f_pos > 0) {
 		return 0; // Don't return anything on subsequent reads
 	}
-	
-	// Tell user we don't do anything	
-	if (copy_to_user(buf, tocopy, sizeof(tocopy)) ) {
-		return -EFAULT;
-	}
 
+	// Get all policies for given user and print them.
+	// Use user ID 1000 and fixed NID: 777 for now
+	read_lock(&ngpolicymap_rwlk);	// Get read lock for policy map
+	policies = get_ngpolicy(uid, nid); // Get policies
+	if (!policies) { // check for no existing policies
+		if (copy_to_user(buf, noOutputMsg, sizeof noOutputMsg) ) {
+			return -EFAULT;
+		}
+
+		*f_pos = sizeof noOutputMsg;
+		return sizeof noOutputMsg;
+	}
+	
+	// We have a policy: parse it
+	while (policies) {
+		current_policy = policies->val;
+		current_policy_key = policies->key;
+
+		// Check policy for soundness
+		if (!current_policy) {
+			printk(KERN_INFO "Error: policy item in list was null...\n");
+			break;
+		} else if (current_policy_key->uid != uid || current_policy_key->nid != nid) {
+			printk(KERN_INFO "Bad key in returned list\n");
+		} else {
+			snprintf(toOutput, sizeof toOutput, "%s Found policy: ", toOutput);
+
+			// Check policy mode
+			if (current_policy->mode == NG_WHITELIST) {
+				snprintf(toOutput, sizeof toOutput, "%s whitelist: ", toOutput);
+			} else if (current_policy->mode == NG_BLACKLIST) {
+				snprintf(toOutput, sizeof toOutput, "%s blacklist: ", toOutput);
+			} else {
+				snprintf(toOutput, sizeof toOutput, "%s unknown mode: ", toOutput);
+			}
+			snprintf(toOutput, sizeof toOutput, "%s With IPs: ", toOutput);
+
+			// Add all matching IP's to output string
+			current_policy_ips = current_policy->ips;
+			for (policy_ip_i = 0; policy_ip_i < current_policy->size; policy_ip_i++) {
+				if (!current_policy_ips) {
+					printk(KERN_INFO "Error: stated size of ip list was incorrect\n");
+					break;
+				}
+
+				// Break IP into octals (for printing)
+				get_ip_octals(current_policy_ips->addr, &ip_octals);
+				snprintf(toOutput, sizeof toOutput, "%s %u.%u.%u.%u ", toOutput,
+					ip_octals[0], ip_octals[1], ip_octals[2], ip_octals[3]);
+
+				current_policy_ips = current_policy_ips->next; // Get next IP in policy
+			}
+		}
+	
+	        policies = policies->next; // Now, get the next policy
+		snprintf(toOutput, sizeof toOutput, "%s\n", toOutput); // add newline for next policy
+	}
+	
+	// Now, return the string to the user	
+	read_unlock(&ngpolicymap_rwlk);
+	if (count > strlen(toOutput)) {
+		count = strlen(toOutput);
+	}
+	if (copy_to_user(buf, toOutput, count)) {
+		return -EFAULT;
+	}	
+
+	*f_pos = count;
 	return count;
 }
 
-static int open_dummy(struct inode *inode, struct file *filp) {
+static int open_dummy(struct inode *inode, struct file *filp) {	// Do not allow writes to /dev file
 	if ( ((filp->f_flags & O_ACCMODE) == O_WRONLY) ||
 		((filp->f_flags & O_ACCMODE) == O_RDWR) ) {
   		printk(KERN_INFO "Cannot write to this file!!!\n");
   		return -EACCES;
 	}
-
 	return 0;
 }
 
-static int release_dummy(struct inode *inode, struct file *filp) {
-	return 0;
-}
+static int release_dummy(struct inode *inode, struct file *filp) { return 0; }
 
 // This defines how the file in /dev is arranged
 static struct file_operations f_ops = {
 	.open = open_dummy,
-	.read = read_dummy,
+	.read = read_dev,
 	.release = release_dummy
 };
 
@@ -319,5 +404,5 @@ module_exit(policy_set_cleanup);
 
 // Module info
 MODULE_AUTHOR("Julian Gonzalez");
-MODULE_DESCRIPTION("Policy setter for NID/nfilter module");
+MODULE_DESCRIPTION("Policy setter/getter for NID/nfilter module");
 MODULE_LICENSE("GPL");
