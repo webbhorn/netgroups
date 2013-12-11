@@ -4,13 +4,19 @@
 
 extern int nfilter_init(void);
 extern void nfilter_exit(void);
+extern int policy_set_init(void);
+extern void policy_set_cleanup(void);
 
-static int init(void) {
-	return nfilter_init();
+static int __init init(void) {
+	int retcode;
+	retcode = nfilter_init();
+	retcode = policy_set_init();
+	return retcode;
 }
 
-static void exit(void) {
+static void __exit exit(void) {
 	nfilter_exit();
+	policy_set_cleanup();
 }
 
 module_init(init);

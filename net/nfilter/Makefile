@@ -1,5 +1,5 @@
 obj-m += nfilter.o
-nfilter-objs := main.o nfilter-main.o ngpolicy.o
+nfilter-objs := main.o nfilter-main.o set_policy.o ngpolicy.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
