@@ -191,8 +191,9 @@ int put_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
 	}
 	val->mode = mode;
 	val->ips = NULL;
+	val->size = 0;
 
-	hashval = hash(key, hashtable);	
+	hashval = hash(key, hashtable);
 	new_list = kmalloc(sizeof(struct _list), GFP_KERNEL);
 	if (!new_list) {
 		kfree(key);
@@ -259,6 +260,7 @@ int putr_ngpolicy(uid_t uid, gid_t nid, ngmode_t mode) {
 	}
 	val->mode = mode;
 	val->ips = NULL;
+	val->size = 0;
 
 	hashval = hash(key, hashtable);	
 	new_list = kmalloc(sizeof(struct _list), GFP_KERNEL);
