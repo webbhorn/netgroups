@@ -76,16 +76,16 @@ static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_
 	}
 	num_nids = nid_i;
 
-	printk(KERN_INFO "got all NIDs\n");
+	read_lock(&ngpolicymap_rwlk); // Get read lock for policy map
 	// Get all policies for given user and all existing NIDs and print them.
 	for (nid_i = 0; nid_i < num_nids; nid_i++) {
-		read_lock(&ngpolicymap_rwlk);	// Get read lock for policy map
 		policies = get_ngpolicy(uid, nids[nid_i]); // Get policies
 		if (!policies) { // check for no existing policies
+			read_unlock(&ngpolicymap_rwlk); // about to return an error, unlock
 			if (copy_to_user(buf, noOutputMsg, sizeof noOutputMsg) ) {
 				return -EFAULT;
 			}
-
+			
 			*f_pos = sizeof noOutputMsg;
 			return sizeof noOutputMsg;
 		}
@@ -102,7 +102,7 @@ static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_
 			} else if (current_policy_key->uid != uid || current_policy_key->nid != nids[nid_i]) {
 				printk(KERN_INFO "Bad key in returned list\n");
 			} else {
-				snprintf(toOutput, sizeof toOutput, "%sFound policy: ", toOutput);
+				snprintf(toOutput, sizeof toOutput, "%sFound policy for nid %d: ", toOutput, (int)nids[nid_i]);
 
 				// Check policy mode
 				if (current_policy->mode == NG_WHITELIST) {
@@ -142,6 +142,7 @@ static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_
 	if (count > strlen(toOutput)) {
 		count = strlen(toOutput);
 	}
+
 	if (copy_to_user(buf, toOutput, count)) {
 		return -EFAULT;
 	}	
@@ -327,16 +328,18 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 			inserted_policy = matching_policy->val; // found our policy
 			break;
 		} else {
+			printk(KERN_INFO "Saw policy that did not match our uid/nid\n");
 			matching_policy = matching_policy->next;
 		}
 	} while (true);
 
 	// Now, have policy. Add IP's to it
 	for (ng_policy_i = 0; ng_policy_i <= ip_i; ng_policy_i++) {
-		printk(KERN_INFO "Added ip to policy.\n");
 		if (add_ip_to_ngpolicy(inserted_policy, ip_addrs[ng_policy_i]) != 0) {
 			printk(KERN_INFO "Addding an IP to a policy failed.\n");
 		}
+		printk(KERN_INFO "Added ip to policy.\n");
+	
 	}
 
 	write_unlock(&ngpolicymap_rwlk); // Free read/write lock
