@@ -9,10 +9,12 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/fs.h>
+#include <linux/cred.h>
 #include <linux/device.h>
 #include <linux/types.h>
 #include <linux/cdev.h>
 #include <linux/string.h>
+#include <linux/sched.h>
 #include <linux/uidgid.h>
 #include <uapi/linux/ip.h>
 #include <asm/uaccess.h>
@@ -39,11 +41,14 @@ void get_ip_octals(__be32 ip_addr, __u8 *toPut) {
 
 // /dev read function. On read, prints out policies for given UID/NID.
 static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) {
-	char noOutputMsg[] = "No policies for UID 1000 and NID 777\n";
+	char noOutputMsg[] = "No policies for current UID and NID 777\n";
 	char toOutput[512];
 
-	uid_t uid = 1000;
-	gid_t nid = 43;
+	// get uid from user_namespace
+	struct user_namespace *user_ns = current_user_ns();
+	kuid_t kuid = current_uid();
+	uid_t uid = from_kuid_munged(user_ns, kuid);
+	gid_t nid = 777;
 
 	struct _list *policies;
 	struct _nidpolicy *current_policy;
@@ -104,9 +109,9 @@ static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_
 				}
 
 				// Break IP into octals (for printing)
-				get_ip_octals(current_policy_ips->addr, &ip_octals);
+				get_ip_octals(current_policy_ips->addr, (__u8 *)(&ip_octals));
 				snprintf(toOutput, sizeof toOutput, "%s %u.%u.%u.%u ", toOutput,
-					ip_octals[0], ip_octals[1], ip_octals[2], ip_octals[3]);
+					ip_octals[3], ip_octals[2], ip_octals[1], ip_octals[0]);
 
 				current_policy_ips = current_policy_ips->next; // Get next IP in policy
 			}
@@ -162,16 +167,18 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 	__u8 octals[4]; // Store IP octals
 
 	char *ip; // Pointer to IP address string
-	char *end_of_input = buf + count; // End of input string
+	const char *end_of_input = buf + count; // End of input string
 	char *end_of_ip; // End of IP address string
 	char *octal_start; // Start of IP octal
 	char *end_of_octal; // End of IP octal
 	__u8 octal_val; // Octal as __u8 type
+	unsigned int octal_as_uint; // Octal as uint type;
 	__be32 parsed_IP; // Parsed IP as IP type
 
 	struct _list* matching_policy; // policy that comes from hashtable lookup
 	struct _nidpolicy* inserted_policy; // actual inserted policy
-	
+	struct _nidkey *mp_key; // key of (uid, nid) from policy	
+
 	int ip_i; // IP address loop var
 	int octal_i; // Octal loop var
 	int ng_policy_i; // ng_policy loop var
@@ -242,7 +249,7 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 		if (end_of_ip) { // null terminate to allow strchr, etc. to work on intermediate strings
 			*end_of_ip = '\0';	
 		} else { // we're at the end of our input string
-			end_of_ip = end_of_input;
+			end_of_ip = (char *)end_of_input;
 		}
 
 		// Split IP address into octals
@@ -260,12 +267,12 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 				*end_of_octal = '\0'; // null terminate to use kstrtouint
 			}
 
-			// todo (jugonz97): convert to __u8 in standards-compliant way
-			if (kstrtouint(octal_start, 10, &octal_val) != 0) {
+			if (kstrtouint(octal_start, 10, &octal_as_uint) != 0) {
 				printk(KERN_INFO "Invalid IP octal.\n");
 				goto err;
 			}
-
+			
+			octal_val = (__u8)octal_as_uint; // Convert to __u8
 			octals[octal_i] = octal_val; // store to be later converted into an IP
 			octal_start = end_of_octal + 1;
 		}
@@ -297,7 +304,7 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 			goto err;
 		}
 		
-		struct _nidkey *mp_key = matching_policy->key;	
+		mp_key = matching_policy->key;	
 		if ((mp_key->uid == uid_val) && (mp_key->nid == nid_val)) {
 			inserted_policy = matching_policy->val; // found our policy
 			break;
@@ -335,7 +342,7 @@ static DEVICE_ATTR(set_policy, S_IWUSR, NULL, sysfile_set_policy);
 int policy_set_init(void) {
 	int return_val;
 	printk(KERN_INFO "%s has started to init\n", PROG_NAME);
-	
+
 	// Alloc the device numbers
 	return_val = alloc_chrdev_region(&device_nums, 0, 1, PROG_NAME);
 	if (return_val < 0) {
