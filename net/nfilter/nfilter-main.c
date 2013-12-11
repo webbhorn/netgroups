@@ -77,7 +77,7 @@ unsigned int hook_function(unsigned int hooknum,
 	return NF_ACCEPT;
 }
 
-static int nfilter_init(void)
+int nfilter_init(void)
 {
 	int retput;
 	struct _list *policy;
@@ -113,7 +113,7 @@ static int nfilter_init(void)
 	return 0;
 }
 
-static void nfilter_exit(void)
+void nfilter_exit(void)
 {
 	nf_unregister_hook(&p);
 	write_lock(&ngpolicymap_rwlk);
@@ -121,10 +121,3 @@ static void nfilter_exit(void)
 	write_unlock(&ngpolicymap_rwlk);
 	printk(KERN_INFO "Removed nfilter module\n");
 }
-
-module_init(nfilter_init);
-module_exit(nfilter_exit);
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Tim Donegan <donegan@mit.edu>, Webb Horn <webbhorn@mit.edu>");
-MODULE_DESCRIPTION("Netgroups filtering code");
