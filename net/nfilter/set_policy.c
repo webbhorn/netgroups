@@ -41,14 +41,19 @@ void get_ip_octals(__be32 ip_addr, __u8 *toPut) {
 
 // /dev read function. On read, prints out policies for given UID/NID.
 static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) {
-	char noOutputMsg[] = "No policies for current UID and NID 777\n";
+	char noOutputMsg[] = "No policies for current UID and NIDs\n";
 	char toOutput[512];
 
 	// get uid from user_namespace
 	struct user_namespace *user_ns = current_user_ns();
 	kuid_t kuid = current_uid();
 	uid_t uid = from_kuid_munged(user_ns, kuid);
-	gid_t nid = 777;
+
+	// get nid's
+	const struct cred *cc = current_cred();
+	struct group_info *ng_info = get_group_info(cc->netgroup_info);
+	gid_t nids[MAX_NIDs]; // look at max of 16 nid's of this user
+	int num_nids; // actual number of stored nid's
 
 	struct _list *policies;
 	struct _nidpolicy *current_policy;
@@ -57,70 +62,81 @@ static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_
 	__u8 ip_octals[4];
 
 	int policy_ip_i; // index for IP list traversal
-
+	int nid_i; // index for nid acquisition/iteration
+	kgid_t knid; // group for nid_i
 
 	if (*f_pos > 0) {
 		return 0; // Don't return anything on subsequent reads
 	}
 
-	// Get all policies for given user and print them.
-	// Use user ID 1000 and fixed NID: 777 for now
-	read_lock(&ngpolicymap_rwlk);	// Get read lock for policy map
-	policies = get_ngpolicy(uid, nid); // Get policies
-	if (!policies) { // check for no existing policies
-		if (copy_to_user(buf, noOutputMsg, sizeof noOutputMsg) ) {
-			return -EFAULT;
-		}
-
-		*f_pos = sizeof noOutputMsg;
-		return sizeof noOutputMsg;
+	// Get all NID's	
+	for (nid_i = 0; nid_i < ng_info->ngroups && nid_i < MAX_NIDs; nid_i++) {
+		knid = GROUP_AT(ng_info, nid_i);
+		nids[nid_i] = from_kgid_munged(user_ns, knid);
 	}
-	
-	// We have a policy: parse it
-	while (policies) {
-		current_policy = policies->val;
-		current_policy_key = policies->key;
+	num_nids = nid_i;
 
-		// Check policy for soundness
-		if (!current_policy) {
-			printk(KERN_INFO "Error: policy item in list was null...\n");
-			break;
-		} else if (current_policy_key->uid != uid || current_policy_key->nid != nid) {
-			printk(KERN_INFO "Bad key in returned list\n");
-		} else {
-			snprintf(toOutput, sizeof toOutput, "%sFound policy: ", toOutput);
+	printk(KERN_INFO "got all NIDs\n");
+	// Get all policies for given user and all existing NIDs and print them.
+	for (nid_i = 0; nid_i < num_nids; nid_i++) {
+		read_lock(&ngpolicymap_rwlk);	// Get read lock for policy map
+		policies = get_ngpolicy(uid, nids[nid_i]); // Get policies
+		if (!policies) { // check for no existing policies
+			if (copy_to_user(buf, noOutputMsg, sizeof noOutputMsg) ) {
+				return -EFAULT;
+			}
 
-			// Check policy mode
-			if (current_policy->mode == NG_WHITELIST) {
-				snprintf(toOutput, sizeof toOutput, "%s whitelist: ", toOutput);
-			} else if (current_policy->mode == NG_BLACKLIST) {
-				snprintf(toOutput, sizeof toOutput, "%s blacklist: ", toOutput);
+			*f_pos = sizeof noOutputMsg;
+			return sizeof noOutputMsg;
+		}
+		
+		// We have a policy: parse it
+		while (policies) {
+			current_policy = policies->val;
+			current_policy_key = policies->key;
+
+			// Check policy for soundness
+			if (!current_policy) {
+				printk(KERN_INFO "Error: policy item in list was null...\n");
+				break;
+			} else if (current_policy_key->uid != uid || current_policy_key->nid != nids[nid_i]) {
+				printk(KERN_INFO "Bad key in returned list\n");
 			} else {
-				snprintf(toOutput, sizeof toOutput, "%s unknown mode: ", toOutput);
-			}
-			snprintf(toOutput, sizeof toOutput, "%s With IPs: ", toOutput);
+				snprintf(toOutput, sizeof toOutput, "%sFound policy: ", toOutput);
 
-			// Add all matching IP's to output string
-			current_policy_ips = current_policy->ips;
-			for (policy_ip_i = 0; policy_ip_i < current_policy->size; policy_ip_i++) {
-				if (!current_policy_ips) {
-					printk(KERN_INFO "Error: stated size of ip list was incorrect\n");
-					break;
+				// Check policy mode
+				if (current_policy->mode == NG_WHITELIST) {
+					snprintf(toOutput, sizeof toOutput, "%s whitelist: ", toOutput);
+				} else if (current_policy->mode == NG_BLACKLIST) {
+					snprintf(toOutput, sizeof toOutput, "%s blacklist: ", toOutput);
+				} else {
+					snprintf(toOutput, sizeof toOutput, "%s unknown mode: ", toOutput);
 				}
+				snprintf(toOutput, sizeof toOutput, "%s With IPs: ", toOutput);
 
-				// Break IP into octals (for printing)
-				get_ip_octals(current_policy_ips->addr, (__u8 *)(&ip_octals));
-				snprintf(toOutput, sizeof toOutput, "%s %u.%u.%u.%u ", toOutput,
-					ip_octals[3], ip_octals[2], ip_octals[1], ip_octals[0]);
+				// Add all matching IP's to output string
+				current_policy_ips = current_policy->ips;
+				for (policy_ip_i = 0; policy_ip_i < current_policy->size; policy_ip_i++) {
+					if (!current_policy_ips) {
+						printk(KERN_INFO "Error: stated size of ip list was incorrect\n");
+						break;
+					}
 
-				current_policy_ips = current_policy_ips->next; // Get next IP in policy
+					// Break IP into octals (for printing)
+					get_ip_octals(current_policy_ips->addr, (__u8 *)(&ip_octals));
+					snprintf(toOutput, sizeof toOutput, "%s %u.%u.%u.%u ", toOutput,
+						ip_octals[3], ip_octals[2], ip_octals[1], ip_octals[0]);
+
+					current_policy_ips = current_policy_ips->next; // Get next IP in policy
+				}
 			}
+		
+			policies = policies->next; // Now, get the next policy
+			snprintf(toOutput, sizeof toOutput, "%s\n", toOutput); // add newline for next policy
 		}
-	
-	        policies = policies->next; // Now, get the next policy
-		snprintf(toOutput, sizeof toOutput, "%s\n", toOutput); // add newline for next policy
+		
 	}
-	
+
 	// Now, return the string to the user	
 	read_unlock(&ngpolicymap_rwlk);
 	if (count > strlen(toOutput)) {
@@ -294,6 +310,7 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 	ng_policy_err = put_ngpolicy(uid_val, nid_val, policy_mode);
 	if (ng_policy_err != 0) {
 		printk(KERN_INFO "put_ngpolicy returned: %d\n", ng_policy_err);
+		write_unlock(&ngpolicymap_rwlk); // unlock write lock	
 		goto err;
 	}
 	// Now, get the policy just inserted
@@ -301,6 +318,7 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 	do {
 		if (!matching_policy) { // check for NULL policy
 			printk("Inserted policy could not be referenced!\n");
+			write_unlock(&ngpolicymap_rwlk); // unlock write lock
 			goto err;
 		}
 		

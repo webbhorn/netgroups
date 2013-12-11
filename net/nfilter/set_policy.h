@@ -8,6 +8,7 @@
 #define PROG_NAME "set_policy"
 #define CLASS_NAME "nfilter_policies"
 #define MAX_IPs 64
+#define MAX_NIDs 16
 
 // changeable names in the format of strings to parse
 extern const char* set_prefix;
