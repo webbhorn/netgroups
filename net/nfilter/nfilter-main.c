@@ -80,8 +80,8 @@ unsigned int hook_function(unsigned int hooknum,
 int nfilter_init(void)
 {
 	int retput;
-	struct _list *policy;
-	__be32 mitaddr, fbaddr;
+	/*struct _list *policy;
+	__be32 mitaddr, fbaddr; */
 
 	printk(KERN_INFO "Loaded nfilter module\n");
 
@@ -98,6 +98,7 @@ int nfilter_init(void)
 	retput = init_ngpolicymap(POLICY_TABLE_SIZE);
 
 	/* Some test policies */
+	/*
 	mitaddr = make_ipaddr(18, 9, 22, 69);
 	fbaddr = make_ipaddr(173, 252, 110, 27);
 
@@ -108,6 +109,7 @@ int nfilter_init(void)
 	retput = put_ngpolicy(1000, 43, NG_WHITELIST);
 	policy = get_ngpolicy(1000, 43);
 	retput = add_ip_to_ngpolicy(policy->val, mitaddr);
+	*/
 	write_unlock(&ngpolicymap_rwlk);
 
 	return 0;

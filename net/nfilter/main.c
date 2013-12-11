@@ -15,8 +15,8 @@ static int __init init(void) {
 }
 
 static void __exit exit(void) {
-	nfilter_exit();
 	policy_set_cleanup();
+	nfilter_exit();
 }
 
 module_init(init);
