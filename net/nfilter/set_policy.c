@@ -88,7 +88,7 @@ static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_
 		} else if (current_policy_key->uid != uid || current_policy_key->nid != nid) {
 			printk(KERN_INFO "Bad key in returned list\n");
 		} else {
-			snprintf(toOutput, sizeof toOutput, "%s Found policy: ", toOutput);
+			snprintf(toOutput, sizeof toOutput, "%sFound policy: ", toOutput);
 
 			// Check policy mode
 			if (current_policy->mode == NG_WHITELIST) {
@@ -336,7 +336,7 @@ end:
 }
 
 // Declare the sysfs methods used
-static DEVICE_ATTR(set_policy, S_IWUSR, NULL, sysfile_set_policy);
+static DEVICE_ATTR(set_policy, 0222, NULL, sysfile_set_policy);
 
 // Called on load of kernel module
 int policy_set_init(void) {
