@@ -78,9 +78,8 @@ unsigned int hook_function(unsigned int hooknum,
 
 	// hack
 	if (!uid) {
-		// TODO: Come back to this
+		// We have no idea what is happening here, abort mission.
 		if (! skb->sk || skb->sk->sk_state == TCP_TIME_WAIT) {
-			printk(KERN_INFO "Was null pointer!!!\n");
 			return NF_DROP;
 		}
 		if (skb->sk->sk_socket && skb->sk->sk_socket->file) {
@@ -88,8 +87,7 @@ unsigned int hook_function(unsigned int hooknum,
 			uid = cred->fsuid.val;
 			cc = skb->sk->sk_socket->file->f_cred;
 		} else {
-			// We have no idea what is happening here, abort mission.
-			printk(KERN_INFO "Caught the derefence fail! Dropping\n");
+			// We also have no idea what is happening here, abort mission.
 			return NF_DROP;
 		}
 	}
