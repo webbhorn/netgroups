@@ -25,7 +25,6 @@ long flags;
 
 int blockpkt(uid_t uid, gid_t nid, __be32 addr)
 {
-	int print_debug;
 	struct _list *policy;
 	int block;
 
@@ -38,14 +37,12 @@ int blockpkt(uid_t uid, gid_t nid, __be32 addr)
 
 	switch(policy->val->mode) {
 	case NG_WHITELIST:
-		printk("Whitelist\n");
 		if (ngpolicy_contains_ip(policy->val, addr))
 			block = false;
 		else
 			block = true;
 		break;
 	case NG_BLACKLIST:
-		printk("Blacklist\n");
 		if (ngpolicy_contains_ip(policy->val, addr))
 			block = true;
 		else
@@ -55,7 +52,6 @@ int blockpkt(uid_t uid, gid_t nid, __be32 addr)
 		block = false;  /* do not block */
 		break;
 	}
-	printk("block = %d\n", block);
 	read_unlock(&ngpolicymap_rwlk);
 	return block;
 }
@@ -67,13 +63,13 @@ unsigned int hook_function(unsigned int hooknum,
 			int (*okfn)(struct sk_buff *))
 {
 	int i;
-	struct cred *cc = current_cred();
+	struct group_info *netgroup_info;
+	const struct cred *cc = current_cred();
 
 	struct iphdr * ip_header = (struct iphdr *) skb_network_header(skb);
 	struct user_namespace *user_ns = current_user_ns();
 
 	__be32 daddr = ip_header->daddr;
-	struct pid * pid = current->pid;
 	uid_t uid = from_kuid_munged(user_ns, current_uid());
 
 	// hack
@@ -93,11 +89,10 @@ unsigned int hook_function(unsigned int hooknum,
 	}
 
 	/* For each nid, check policy of daddr */
-	struct group_info *netgroup_info = get_group_info(cc->netgroup_info);
+	netgroup_info = get_group_info(cc->netgroup_info);
 	for (i = 0; i < netgroup_info->ngroups; i++) {
 		kgid_t knid = GROUP_AT(netgroup_info, i);
 		gid_t nid = from_kgid_munged(user_ns, knid);
-		printk("Checking policy for nid %d\n", nid);
 
 		if (blockpkt(uid, nid, daddr))
 		{
