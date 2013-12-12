@@ -1,5 +1,6 @@
 #include "ngpolicy.h"
 
+#include <linux/preempt_mask.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -11,30 +12,43 @@
 #include <linux/uidgid.h>
 #include <linux/spinlock.h>
 
+#include <net/sock.h>
+#include <linux/socket.h>
+#include <linux/fs.h>
+
 #define POLICY_TABLE_SIZE 1021
 
 static struct nf_hook_ops p;
+DEFINE_SPINLOCK(irqlk);
+long flags;
 
-int blockpkt(uid_t uid, gid_t nid, __be32 addr)
+int blockpkt(uid_t uid, gid_t nid, __be32 addr, int dbg)
 {
+	int print_debug;
 	struct _list *policy;
 	int block;
 
 	read_lock(&ngpolicymap_rwlk);
 	policy = get_ngpolicy(uid, nid);
+	if (dbg)
+		printk(KERN_INFO "policy addr: %p\n", policy);
 	if (!policy) {
 		read_unlock(&ngpolicymap_rwlk);
 		return false;
 	}
 
+	if (dbg)
+		printk(KERN_INFO "policy mode: %d\n", policy->val->mode);
 	switch(policy->val->mode) {
 	case NG_WHITELIST:
+		printk("Whitelist\n");
 		if (ngpolicy_contains_ip(policy->val, addr))
 			block = false;
 		else
 			block = true;
 		break;
 	case NG_BLACKLIST:
+		printk("Blacklist\n");
 		if (ngpolicy_contains_ip(policy->val, addr))
 			block = true;
 		else
@@ -44,6 +58,7 @@ int blockpkt(uid_t uid, gid_t nid, __be32 addr)
 		block = false;  /* do not block */
 		break;
 	}
+	printk("block = %d\n", block);
 	read_unlock(&ngpolicymap_rwlk);
 	return block;
 }
@@ -61,17 +76,69 @@ unsigned int hook_function(unsigned int hooknum,
 
 	__be32 daddr = ip_header->daddr;
 	kuid_t kuid = current_uid();
+	struct pid * pid = current->pid;
 	uid_t uid = from_kuid_munged(user_ns, kuid);
+
+	__be32 ip = make_ipaddr(93, 184, 216, 119);
+	if (ip == daddr) {
+		printk(KERN_INFO "The uid is %d and the pid is %d\n", uid, pid);
+		printk(KERN_INFO "Are we in an interrupt? %d\n", in_interrupt());
+		printk(KERN_INFO "Are we in a software interrupt? %d\n", in_softirq());
+
+		//read_lock_bh(&skb->sk->sk_callback_lock);
+		
+
+		//spin_lock_irqsave(&irqlk, &flags);
+		printk(KERN_INFO "\n\n\n");
+		printk(KERN_INFO "skb: %p\n", skb);
+		printk(KERN_INFO "sk: %p\n", skb->sk);
+		printk(KERN_INFO "sk_socket: %p\n", skb->sk->sk_socket);
+		printk(KERN_INFO "file: %p\n", skb->sk->sk_socket->file);
+		printk(KERN_INFO "f_cred: %p\n", skb->sk->sk_socket->file->f_cred);
+		printk(KERN_INFO "\n\n\n");
+		const struct cred *cred = skb->sk->sk_socket->file->f_cred;
+		printk(KERN_INFO "UID=%u GID=%u ",
+			cred->fsuid.val,
+			cred->fsgid.val);
+				/*
+			from_kuid_munged(&init_user_ns, cred->fsuid),
+			from_kgid_munged(&init_user_ns, cred->fsgid));
+			*/
+		//read_unlock_bh(&skb->sk->sk_callback_lock);
+		//spin_unlock_irqrestore(&irqlk, &flags);
+	}
+
+	/**
+	if (!uid) {
+		const struct cred *cred2 = skb->sk->sk_socket->file->f_cred;
+		uid_t puid = from_kuid_munged(&init_user_ns, cred2->fsuid);
+		if (puid) {
+			uid = puid;
+		}
+	}
+	**/
+
 
 	/* For each nid, check policy of daddr */
 	const struct cred *cc = current_cred();
 	struct group_info *netgroup_info = get_group_info(cc->netgroup_info);
+	int dbg = 0;
 	for (i = 0; i < netgroup_info->ngroups; i++) {
 		kgid_t knid = GROUP_AT(netgroup_info, i);
 		gid_t nid = from_kgid_munged(user_ns, knid);
+		if (ip == daddr) {
+			printk(KERN_INFO "One nid is %d\n", nid);
+			dbg =1;
+		}
 
-		if (blockpkt(uid, nid, daddr))
+
+		if (blockpkt(uid, nid, daddr, dbg))
+		{
+			if (ip == daddr) {
+				printk(KERN_INFO "Dropping that shit\n");
+			}
 			return NF_DROP;
+		}
 	}
 
 	return NF_ACCEPT;
