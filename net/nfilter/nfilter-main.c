@@ -76,14 +76,14 @@ unsigned int hook_function(unsigned int hooknum,
 	 * One problem with using the netfilter API is that the hooks
 	 * are not always executed in kernel context. Specifically,
 	 * most protocols, such as UDP and ICMP, always execute in
-	 * kernel context, but other protocols, such as TCP, do not have
-	 * the same requirement. We have no easy way of getting the creds
+	 * process context, but other protocols, such as TCP, do not have
+	 * the same behavior. We have no easy way of getting the creds
 	 * when in interrupt context, so this code block provides a hacky
 	 * way of doing it. In a more well developed application, we would
 	 * find a better (correct) way of getting the cred. The cred we get
 	 * here is the cred associated with the socket, not the cred of the
-	 * process writing to the socket -- for the purposed of the demo,
-	 * they are the same.
+	 * process writing to the socket -- for the purposes of our getting
+	 * a working system, this approximates the correct behavior.
 	 */
 	if (in_interrupt()) {
 		if (! skb->sk || skb->sk->sk_state == TCP_TIME_WAIT ||
