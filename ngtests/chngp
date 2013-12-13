@@ -15,8 +15,8 @@ nid = args.nid[0]
 mode = args.mode[0]
 ips = ' '.join(args.ips)
 
-writefile = "/sys/class/nfilter_policies/set_policy/set_policy"
-command = "set %s %s %s %s" % (os.geteuid(), nid, mode, ips)
+writefile = "/sys/class/nfilter_policies/policy_mod/nid_policies"
+command = "set %s %s %s" % ( nid, mode, ips)
 print command
 with open(writefile, 'w') as f:
   f.write(command)

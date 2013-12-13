@@ -1,0 +1,4 @@
+#!/usr/bin/python
+
+import os
+os.system("cat /sys/class/nfilter_policies/policy_mod/nid_policies");

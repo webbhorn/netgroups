@@ -1,11 +1,10 @@
-#ifndef _SETPOLICY_H_
-#define _SETPOLICY_H_
+#ifndef _POLICY_SYSFILE_H_
+#define _POLICY_SYSFILE_H_
 
 #include <linux/types.h>
 #include <linux/device.h>
-#include <linux/cdev.h>
 
-#define PROG_NAME "set_policy"
+#define PROG_NAME "policy_mod"
 #define CLASS_NAME "nfilter_policies"
 #define MAX_IPs 64
 #define MAX_NIDs 16
@@ -19,6 +18,5 @@ extern const char* mode_whitelist;
 static dev_t device_nums;
 struct device *sysfs_device;
 static struct class *device_class;
-static struct cdev *policy_cdev;
 
-#endif /* _SETPOLICY_H_ */
+#endif /* _POLICY_SYSFILE_H_ */

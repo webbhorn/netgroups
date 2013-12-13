@@ -1,18 +1,14 @@
-/* Set_Policy Kernel Module
- * Uses code from Linux Devices Drivers, 3rd edition &
- * http://pete.akeo.ie/2011/08/writing-linux-device-driver-for-kernels.html
+/* Policy setter/getter for nfilter
  * Julian Gonzalez, 6.858 Final Project Fall 2013
  */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/slab.h>
 #include <linux/fs.h>
 #include <linux/cred.h>
 #include <linux/device.h>
 #include <linux/types.h>
-#include <linux/cdev.h>
 #include <linux/string.h>
 #include <linux/sched.h>
 #include <linux/uidgid.h>
@@ -20,7 +16,7 @@
 #include <asm/uaccess.h>
 
 #include "ngpolicy.h"
-#include "set_policy.h"
+#include "policy_sysfile.h"
 
 // String constants
 const char * set_prefix = "set";
@@ -39,8 +35,9 @@ void get_ip_octals(__be32 ip_addr, __u8 *toPut) {
         }
 }
 
-// /dev read function. On read, prints out policies for given UID/NID.
-static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) {
+// Reading this file shows all policies for the given UIDs/GIDs
+static ssize_t sysfile_read_policies(struct device* dev, struct device_attribute* attr,
+	char* buf) {
 	char noOutputMsg[] = "No policies for current UID and NIDs\n";
 	char toOutput[512];
 
@@ -49,14 +46,14 @@ static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_
 	kuid_t kuid = current_uid();
 	uid_t uid = from_kuid_munged(user_ns, kuid);
 
-	// get nid's
+// get nid's
 	const struct cred *cc = current_cred();
 	struct group_info *ng_info = get_group_info(cc->netgroup_info);
 	gid_t nids[MAX_NIDs]; // look at max of 16 nid's of this user
 	int num_nids; // actual number of stored nid's
 
-	struct _list *policies;
-	struct _nidpolicy *current_policy;
+	struct _list *policy; // policy retrieved from hashtable
+	struct _nidpolicy *current_policy; // ...as _nidpolicy item
 	struct _nidkey *current_policy_key;
 	struct _ip_list *current_policy_ips;
 	__u8 ip_octals[4];
@@ -65,10 +62,6 @@ static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_
 	int nid_i; // index for nid acquisition/iteration
 	kgid_t knid; // group for nid_i
 
-	if (*f_pos > 0) {
-		return 0; // Don't return anything on subsequent reads
-	}
-
 	// Get all NID's	
 	for (nid_i = 0; nid_i < ng_info->ngroups && nid_i < MAX_NIDs; nid_i++) {
 		knid = GROUP_AT(ng_info, nid_i);
@@ -76,108 +69,79 @@ static ssize_t read_dev(struct file *filp, char __user *buf, size_t count, loff_
 	}
 	num_nids = nid_i;
 
+	if (num_nids == 0) {
+		return snprintf(buf, sizeof noOutputMsg, noOutputMsg); // nothing to print
+	} else {
+		sprintf(toOutput, "Existing policies:\n"); // Add header text
+	}
+
 	read_lock(&ngpolicymap_rwlk); // Get read lock for policy map
-	// Get all policies for given user and all existing NIDs and print them.
+	// Get all policies for given user and existing NIDs and print them.
 	for (nid_i = 0; nid_i < num_nids; nid_i++) {
-		policies = get_ngpolicy(uid, nids[nid_i]); // Get policies
-		if (!policies) { // check for no existing policies
+		policy = get_ngpolicy(uid, nids[nid_i]); // Get policy
+		if (!policy) { // check for no existing policies
 			read_unlock(&ngpolicymap_rwlk); // about to return an error, unlock
-			if (copy_to_user(buf, noOutputMsg, sizeof noOutputMsg) ) {
-				return -EFAULT;
-			}
-			
-			*f_pos = sizeof noOutputMsg;
-			return sizeof noOutputMsg;
+			return snprintf(buf, sizeof noOutputMsg, noOutputMsg);
 		}
 		
 		// We have a policy: parse it
-		while (policies) {
-			current_policy = policies->val;
-			current_policy_key = policies->key;
+		current_policy = policy->val;
+		current_policy_key = policy->key;
 
-			// Check policy for soundness
-			if (!current_policy) {
-				printk(KERN_INFO "Error: policy item in list was null...\n");
-				break;
-			} else if (current_policy_key->uid != uid || current_policy_key->nid != nids[nid_i]) {
-				printk(KERN_INFO "Bad key in returned list\n");
+		// Check policy for soundness
+		if (!current_policy) {
+			printk(KERN_INFO "Error: policy item in list was null...\n");
+			break;
+		} else if (current_policy_key->uid != uid || current_policy_key->nid != nids[nid_i]) {
+			printk(KERN_INFO "Bad key in returned list\n");
+		} else {
+			snprintf(toOutput, sizeof toOutput, "%sFound policy for nid %d:", toOutput, (int)nids[nid_i]);
+
+			// Check policy mode
+			if (current_policy->mode == NG_WHITELIST) {
+				snprintf(toOutput, sizeof toOutput, "%s Mode: whitelist", toOutput);
+			} else if (current_policy->mode == NG_BLACKLIST) {
+				snprintf(toOutput, sizeof toOutput, "%s Mode: blacklist", toOutput);
 			} else {
-				snprintf(toOutput, sizeof toOutput, "%sFound policy for nid %d: ", toOutput, (int)nids[nid_i]);
-
-				// Check policy mode
-				if (current_policy->mode == NG_WHITELIST) {
-					snprintf(toOutput, sizeof toOutput, "%s whitelist: ", toOutput);
-				} else if (current_policy->mode == NG_BLACKLIST) {
-					snprintf(toOutput, sizeof toOutput, "%s blacklist: ", toOutput);
-				} else {
-					snprintf(toOutput, sizeof toOutput, "%s unknown mode: ", toOutput);
-				}
-				snprintf(toOutput, sizeof toOutput, "%s With IPs: ", toOutput);
-
-				// Add all matching IP's to output string
-				current_policy_ips = current_policy->ips;
-				for (policy_ip_i = 0; policy_ip_i < current_policy->size; policy_ip_i++) {
-					if (!current_policy_ips) {
-						printk(KERN_INFO "Error: stated size of ip list was incorrect\n");
-						break;
-					}
-
-					// Break IP into octals (for printing)
-					get_ip_octals(current_policy_ips->addr, (__u8 *)(&ip_octals));
-					snprintf(toOutput, sizeof toOutput, "%s %u.%u.%u.%u ", toOutput,
-						ip_octals[3], ip_octals[2], ip_octals[1], ip_octals[0]);
-
-					current_policy_ips = current_policy_ips->next; // Get next IP in policy
-				}
+				snprintf(toOutput, sizeof toOutput, "%s Mode: unknown mode", toOutput);
 			}
-		
-			policies = policies->next; // Now, get the next policy
-			snprintf(toOutput, sizeof toOutput, "%s\n", toOutput); // add newline for next policy
+			snprintf(toOutput, sizeof toOutput, "%s With IPs:", toOutput);
+
+			// Add all matching IP's to output string
+			current_policy_ips = current_policy->ips;
+			for (policy_ip_i = 0; policy_ip_i < current_policy->size; policy_ip_i++) {
+				if (!current_policy_ips) {
+					printk(KERN_INFO "Error: stated size of ip list was incorrect\n");
+					break;
+				}
+
+				// Break IP into octals (for printing)
+				get_ip_octals(current_policy_ips->addr, (__u8 *)(&ip_octals));
+				snprintf(toOutput, sizeof toOutput, "%s %u.%u.%u.%u ", toOutput,
+					ip_octals[3], ip_octals[2], ip_octals[1], ip_octals[0]);
+
+				current_policy_ips = current_policy_ips->next; // Get next IP in policy
+			}
 		}
+		snprintf(toOutput, sizeof toOutput, "%s\n", toOutput); // add newline for next policy
 		
 	}
 
-	// Now, return the string to the user	
-	read_unlock(&ngpolicymap_rwlk);
-	if (count > strlen(toOutput)) {
-		count = strlen(toOutput);
-	}
-
-	if (copy_to_user(buf, toOutput, count)) {
-		return -EFAULT;
-	}	
-
-	*f_pos = count;
-	return count;
+	read_unlock(&ngpolicymap_rwlk); // unlock read lock!!
+	return snprintf(buf, PAGE_SIZE, "%s", toOutput); // Print to provided buffer
 }
-
-static int open_dummy(struct inode *inode, struct file *filp) {	// Do not allow writes to /dev file
-	if ( ((filp->f_flags & O_ACCMODE) == O_WRONLY) ||
-		((filp->f_flags & O_ACCMODE) == O_RDWR) ) {
-  		printk(KERN_INFO "Cannot write to this file!!!\n");
-  		return -EACCES;
-	}
-	return 0;
-}
-
-static int release_dummy(struct inode *inode, struct file *filp) { return 0; }
-
-// This defines how the file in /dev is arranged
-static struct file_operations f_ops = {
-	.open = open_dummy,
-	.read = read_dev,
-	.release = release_dummy
-};
 
 // Writing to this file adds a policy
 static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* attr,
 	const char* buf, size_t count) {	
 
 	ngmode_t policy_mode;	// Policy type: see ngpolicy.h
-	char *uid; // Pointer to UID string
 	char *nid; // Pointer to NID string
 	char *mode; // Pointer to policy mode string
-	uid_t uid_val; // UID as UID type
+
+	struct user_namespace *user_ns = current_user_ns();
+	kuid_t kuid = current_uid();
+	uid_t uid_val = from_kuid_munged(user_ns, kuid); // UID as UID type
 	gid_t nid_val; // NID as GID type
 
 	__be32 ip_addrs[MAX_IPs]; // IP address array	
@@ -206,15 +170,7 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 		goto err;
 	}	
 	
-	uid = strchr(buf, ' '); // get UID
-	if (!uid) {
-		printk(KERN_INFO "Syntax error: could not find a UID.\n");
-		goto err;
-	}
-	*uid = '\0';
-	uid++;
-	
-	nid = strchr(uid, ' '); // get NID
+	nid = strchr(buf, ' '); // get NID
 	if (!nid) {
 		printk(KERN_INFO "Syntax error: could not find an NID.\n");
 		goto err;
@@ -230,15 +186,8 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 	*mode = '\0';
 	mode++;
 
-	// Parse UID
-	if (kstrtouint(uid, 10, &uid_val) != 0) { // depends on uid_t being unsigned int
-		printk(KERN_INFO "Invalid UID specified.\n");
-		goto err;
-	}
-	printk(KERN_INFO "uid is: %u\n", uid_val);
-	
 	// Parse NID
-	if (kstrtouint(nid, 10, &nid_val) != 0) {
+	if (kstrtouint(nid, 10, &nid_val) != 0) { // Depends on gid_t being unsigned int
 		printk(KERN_INFO "Invalid NID specified.\n");
 		goto err;
 	}
@@ -357,7 +306,7 @@ end:
 }
 
 // Declare the sysfs methods used
-static DEVICE_ATTR(set_policy, 0222, NULL, sysfile_set_policy);
+static DEVICE_ATTR(nid_policies, 0666, sysfile_read_policies, sysfile_set_policy);
 
 // Called on load of kernel module
 int policy_set_init(void) {
@@ -376,7 +325,7 @@ int policy_set_init(void) {
 		goto err_class_create;
 	}
 
-	// Now, create a device file (in /dev)
+	// Now, create a device for sysfs to operate on
 	sysfs_device = device_create(device_class, NULL, device_nums, NULL, PROG_NAME);
 	if (sysfs_device == NULL) {
 		return_val = -1;
@@ -384,42 +333,29 @@ int policy_set_init(void) {
 	}	
 
 	// Add files in /sys for adding and resetting the queue
-	return_val = device_create_file(sysfs_device, &dev_attr_set_policy);
+	return_val = device_create_file(sysfs_device, &dev_attr_nid_policies);
 	if (return_val < 0) {
-		printk(KERN_INFO "%s failed to create the set_policy sysfs file...\n", PROG_NAME);
+		printk(KERN_INFO "%s failed to create sysfs file...\n", PROG_NAME);
+		goto err_create_file;
 	}
 
-	// Need to register a character device
-	// Do this by allocing/initing a cdev struct
-	policy_cdev = cdev_alloc();
-	cdev_init(policy_cdev, &f_ops);
-	policy_cdev->owner = THIS_MODULE;
-
-	// Add device to kernel
-	return_val = cdev_add(policy_cdev, device_nums, 1);
-	if (return_val < 0) {
-		goto err_cdev_add;
-	}
-
-	// Finish setup
+	printk(KERN_INFO "%s finished initialization\n", PROG_NAME);
 	return 0; // setup OK, else, destroy everything created
 
-err_cdev_add:
-	device_remove_file(sysfs_device, &dev_attr_set_policy);
+err_create_file:
 	device_destroy(device_class, device_nums);
 err_dev_create:
 	class_destroy(device_class);
 err_class_create:
 	unregister_chrdev_region(device_nums, 1);
 err:	
-	printk(KERN_INFO "%s exited during initialization\n", PROG_NAME);
+	printk(KERN_INFO "%s failed to finish initialization\n", PROG_NAME);
 	return return_val;	
 }
 
 // Called on unload of kernel module
 void policy_set_cleanup(void) {
-	cdev_del(policy_cdev);
-	device_remove_file(sysfs_device, &dev_attr_set_policy);
+	device_remove_file(sysfs_device, &dev_attr_nid_policies);	
 	device_destroy(device_class, device_nums);
 	class_destroy(device_class);
 	unregister_chrdev_region(device_nums, 1);
