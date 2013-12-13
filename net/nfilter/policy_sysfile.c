@@ -1,6 +1,4 @@
-/* Policy setter/getter for nfilter
- * Julian Gonzalez, 6.858 Final Project Fall 2013
- */
+/* Policy setter/getter for nfilter */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
