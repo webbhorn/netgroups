@@ -82,17 +82,19 @@ unsigned int hook_function(unsigned int hooknum,
 	uid_t uid = from_kuid_munged(user_ns, kuid);
 
 	__be32 ip = make_ipaddr(93, 184, 216, 119);
-	if (ip == daddr) {
-		printk(KERN_INFO "The uid is %d and the pid is %d\n", uid, pid);
-		printk(KERN_INFO "Are we in an interrupt? %d\n", in_interrupt());
-		printk(KERN_INFO "Are we in a software interrupt? %d\n", in_softirq());
+	if (!uid) {
+		//printk(KERN_INFO "The uid is %d and the pid is %d\n", uid, pid);
+		//printk(KERN_INFO "Are we in an interrupt? %d\n", in_interrupt());
+		//printk(KERN_INFO "Are we in a software interrupt? %d\n", in_softirq());
 
+		// TODO: Come back to this
 		if (! skb->sk || skb->sk->sk_state == TCP_TIME_WAIT) {
 			printk(KERN_INFO "Was null pointer!!!\n");
 			return NF_DROP;
 		}
 		if (skb->sk->sk_socket && skb->sk->sk_socket->file) {
 
+			/*
 			printk(KERN_INFO "\n\n\n");
 			printk(KERN_INFO "skb: %p\n", skb);
 			printk(KERN_INFO "sk: %p\n", skb->sk);
@@ -100,16 +102,17 @@ unsigned int hook_function(unsigned int hooknum,
 			printk(KERN_INFO "file: %p\n", skb->sk->sk_socket->file);
 			printk(KERN_INFO "f_cred: %p\n", skb->sk->sk_socket->file->f_cred);
 			printk(KERN_INFO "\n\n\n");
+			*/
 			const struct cred *cred = skb->sk->sk_socket->file->f_cred;
+			/*
 			printk(KERN_INFO "!!!\nUID=%u\nGID=%u\n!!!\n\n",
 				cred->fsuid.val,
 				cred->fsgid.val);
 			printk(KERN_INFO "uid before: %d\n", uid);
-			if (!uid) {
-				uid = cred->fsuid.val;
-				cc = skb->sk->sk_socket->file->f_cred;
-			}
-			printk(KERN_INFO "uid after: %d\n", uid);
+			*/
+			uid = cred->fsuid.val;
+			cc = skb->sk->sk_socket->file->f_cred;
+			//printk(KERN_INFO "uid after: %d\n", uid);
 		} else {
 			printk(KERN_INFO "Caught the derefence fail!\n");
 		}
