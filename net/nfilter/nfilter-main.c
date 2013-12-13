@@ -72,19 +72,28 @@ unsigned int hook_function(unsigned int hooknum,
 	__be32 daddr = ip_header->daddr;
 	uid_t uid = from_kuid_munged(user_ns, current_uid());
 
-	// hack
-	if (!uid) {
-		// We have no idea what is happening here, abort mission.
-		if (! skb->sk || skb->sk->sk_state == TCP_TIME_WAIT) {
+	/**
+	 * One problem with using the netfilter API is that the hooks
+	 * are not always executed in kernel context. Specifically,
+	 * most protocols, such as UDP and ICMP, always execute in
+	 * kernel context, but other protocols, such as TCP, do not have
+	 * the same requirement. We have no easy way of getting the creds
+	 * when in interrupt context, so this code block provides a hacky
+	 * way of doing it. In a more well developed application, we would
+	 * find a better (correct) way of getting the cred. The cred we get
+	 * here is the cred associated with the socket, not the cred of the
+	 * process writing to the socket -- for the purposed of the demo,
+	 * they are the same.
+	 */
+	if (in_interrupt()) {
+		if (! skb->sk || skb->sk->sk_state == TCP_TIME_WAIT ||
+				! skb->sk->sk_socket || ! skb->sk->sk_socket->file) {
+			// null pointer - an occasional dropped packet never hurt anyone :)
 			return NF_DROP;
-		}
-		if (skb->sk->sk_socket && skb->sk->sk_socket->file) {
-			const struct cred *cred = skb->sk->sk_socket->file->f_cred;
-			uid = cred->fsuid.val;
-			cc = skb->sk->sk_socket->file->f_cred;
 		} else {
-			// We also have no idea what is happening here, abort mission.
-			return NF_DROP;
+			// get the alternate cred
+			cc = skb->sk->sk_socket->file->f_cred;
+			uid = cc->fsuid.val;
 		}
 	}
 
@@ -105,10 +114,6 @@ unsigned int hook_function(unsigned int hooknum,
 
 int nfilter_init(void)
 {
-	int retput;
-	/*struct _list *policy;
-	__be32 mitaddr, fbaddr; */
-
 	printk(KERN_INFO "Loaded nfilter module\n");
 
 	p.hook = hook_function;
@@ -121,21 +126,8 @@ int nfilter_init(void)
 	/* Initialize the policymap */
 	rwlock_init(&ngpolicymap_rwlk);
 	write_lock(&ngpolicymap_rwlk);
-	retput = init_ngpolicymap(POLICY_TABLE_SIZE);
+	init_ngpolicymap(POLICY_TABLE_SIZE);
 
-	/* Some test policies */
-	/*
-	mitaddr = make_ipaddr(18, 9, 22, 69);
-	fbaddr = make_ipaddr(173, 252, 110, 27);
-
-	retput = put_ngpolicy(1000, 42, NG_BLACKLIST);
-	policy = get_ngpolicy(1000, 42);
-	retput = add_ip_to_ngpolicy(policy->val, fbaddr);
-
-	retput = put_ngpolicy(1000, 43, NG_WHITELIST);
-	policy = get_ngpolicy(1000, 43);
-	retput = add_ip_to_ngpolicy(policy->val, mitaddr);
-	*/
 	write_unlock(&ngpolicymap_rwlk);
 
 	return 0;
