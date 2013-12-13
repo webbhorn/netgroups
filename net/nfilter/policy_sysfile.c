@@ -189,7 +189,6 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 		printk(KERN_INFO "Invalid NID specified.\n");
 		goto err;
 	}
-	printk(KERN_INFO "nid is: %u\n", nid_val);
 
 	// parse policy mode: blacklist or whitelist
 	if (strnicmp(mode, mode_blacklist, strlen(mode_blacklist)) == 0) {
@@ -202,7 +201,6 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 		printk(KERN_INFO "Invalid policy mode specified.\n");
 		goto err;
 	}
-	printk(KERN_INFO "Policy mode is: %d\n", policy_mode);
 
 	// Parse IP addresses and save them	
 	// need octals to be unsigned ints (specifically __u8's)
@@ -265,7 +263,6 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 	matching_policy = get_ngpolicy(uid_val, nid_val);
 	do {
 		if (!matching_policy) { // check for NULL policy
-			printk("Inserted policy could not be referenced!\n");
 			write_unlock(&ngpolicymap_rwlk); // unlock write lock
 			goto err;
 		}
@@ -275,7 +272,6 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 			inserted_policy = matching_policy->val; // found our policy
 			break;
 		} else {
-			printk(KERN_INFO "Saw policy that did not match our uid/nid\n");
 			matching_policy = matching_policy->next;
 		}
 	} while (true);
@@ -285,20 +281,18 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 		if (add_ip_to_ngpolicy(inserted_policy, ip_addrs[ng_policy_i]) != 0) {
 			printk(KERN_INFO "Addding an IP to a policy failed.\n");
 		}
-		printk(KERN_INFO "Added ip to policy.\n");
 	
 	}
-
 	write_unlock(&ngpolicymap_rwlk); // Free read/write lock
 
 	printk(KERN_INFO "Policy has been set!\n");
 	goto ok;
 
 err:
-	printk(KERN_INFO "Set policy message unsuccessfully parsed.\n");
+	printk(KERN_INFO "Set policy message unsuccessfully parsed or set.\n");
 	goto end;
 ok:	
-	printk(KERN_INFO "Set policy message successfully parsed.\n");
+	printk(KERN_INFO "Set policy message successfully parsed and set.\n");
 end:
 	return count;
 }
@@ -309,7 +303,6 @@ static DEVICE_ATTR(nid_policies, 0666, sysfile_read_policies, sysfile_set_policy
 // Called on load of kernel module
 int policy_set_init(void) {
 	int return_val;
-	printk(KERN_INFO "%s has started to init\n", PROG_NAME);
 
 	// Alloc the device numbers
 	return_val = alloc_chrdev_region(&device_nums, 0, 1, PROG_NAME);
@@ -337,7 +330,7 @@ int policy_set_init(void) {
 		goto err_create_file;
 	}
 
-	printk(KERN_INFO "%s finished initialization\n", PROG_NAME);
+	printk(KERN_INFO "%s has initialized\n", PROG_NAME);
 	return 0; // setup OK, else, destroy everything created
 
 err_create_file:
