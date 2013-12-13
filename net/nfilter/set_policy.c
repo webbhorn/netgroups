@@ -46,7 +46,7 @@ static ssize_t sysfile_read_policies(struct device* dev, struct device_attribute
 	kuid_t kuid = current_uid();
 	uid_t uid = from_kuid_munged(user_ns, kuid);
 
-	// get nid's
+// get nid's
 	const struct cred *cc = current_cred();
 	struct group_info *ng_info = get_group_info(cc->netgroup_info);
 	gid_t nids[MAX_NIDs]; // look at max of 16 nid's of this user
@@ -136,10 +136,12 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 	const char* buf, size_t count) {	
 
 	ngmode_t policy_mode;	// Policy type: see ngpolicy.h
-	char *uid; // Pointer to UID string
 	char *nid; // Pointer to NID string
 	char *mode; // Pointer to policy mode string
-	uid_t uid_val; // UID as UID type
+
+	struct user_namespace *user_ns = current_user_ns();
+	kuid_t kuid = current_uid();
+	uid_t uid_val = from_kuid_munged(user_ns, kuid); // UID as UID type
 	gid_t nid_val; // NID as GID type
 
 	__be32 ip_addrs[MAX_IPs]; // IP address array	
@@ -168,15 +170,7 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 		goto err;
 	}	
 	
-	uid = strchr(buf, ' '); // get UID
-	if (!uid) {
-		printk(KERN_INFO "Syntax error: could not find a UID.\n");
-		goto err;
-	}
-	*uid = '\0';
-	uid++;
-	
-	nid = strchr(uid, ' '); // get NID
+	nid = strchr(buf, ' '); // get NID
 	if (!nid) {
 		printk(KERN_INFO "Syntax error: could not find an NID.\n");
 		goto err;
@@ -192,15 +186,8 @@ static ssize_t sysfile_set_policy(struct device* dev, struct device_attribute* a
 	*mode = '\0';
 	mode++;
 
-	// Parse UID
-	if (kstrtouint(uid, 10, &uid_val) != 0) { // depends on uid_t being unsigned int
-		printk(KERN_INFO "Invalid UID specified.\n");
-		goto err;
-	}
-	printk(KERN_INFO "uid is: %u\n", uid_val);
-	
 	// Parse NID
-	if (kstrtouint(nid, 10, &nid_val) != 0) {
+	if (kstrtouint(nid, 10, &nid_val) != 0) { // Depends on gid_t being unsigned int
 		printk(KERN_INFO "Invalid NID specified.\n");
 		goto err;
 	}
