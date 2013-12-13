@@ -114,7 +114,9 @@ unsigned int hook_function(unsigned int hooknum,
 			cc = skb->sk->sk_socket->file->f_cred;
 			//printk(KERN_INFO "uid after: %d\n", uid);
 		} else {
-			printk(KERN_INFO "Caught the derefence fail!\n");
+			// We have no idea what is happening here, abort mission.
+			printk(KERN_INFO "Caught the derefence fail! Dropping\n");
+			return NF_DROP;
 		}
 	}
 
