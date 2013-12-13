@@ -74,7 +74,7 @@ unsigned int hook_function(unsigned int hooknum,
 
 	/**
 	 * One problem with using the netfilter API is that the hooks
-	 * are not always executed in kernel context. Specifically,
+	 * are not always executed in process context. Specifically,
 	 * most protocols, such as UDP and ICMP, always execute in
 	 * process context, but other protocols, such as TCP, do not have
 	 * the same behavior. We have no easy way of getting the creds
