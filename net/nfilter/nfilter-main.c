@@ -11,6 +11,7 @@
 #include <linux/sched.h>
 #include <linux/uidgid.h>
 #include <linux/spinlock.h>
+#include <net/tcp.h>
 
 #include <net/sock.h>
 #include <linux/socket.h>
@@ -70,6 +71,7 @@ unsigned int hook_function(unsigned int hooknum,
 			int (*okfn)(struct sk_buff *))
 {
 	int i;
+	struct cred *cc = current_cred();
 
 	struct iphdr * ip_header = (struct iphdr *) skb_network_header(skb);
 	struct user_namespace *user_ns = current_user_ns();
@@ -85,47 +87,41 @@ unsigned int hook_function(unsigned int hooknum,
 		printk(KERN_INFO "Are we in an interrupt? %d\n", in_interrupt());
 		printk(KERN_INFO "Are we in a software interrupt? %d\n", in_softirq());
 
-		//read_lock_bh(&skb->sk->sk_callback_lock);
-		
+		if (! skb->sk || skb->sk->sk_state == TCP_TIME_WAIT) {
+			printk(KERN_INFO "Was null pointer!!!\n");
+			return NF_DROP;
+		}
+		if (skb->sk->sk_socket && skb->sk->sk_socket->file) {
 
-		//spin_lock_irqsave(&irqlk, &flags);
-		printk(KERN_INFO "\n\n\n");
-		printk(KERN_INFO "skb: %p\n", skb);
-		printk(KERN_INFO "sk: %p\n", skb->sk);
-		printk(KERN_INFO "sk_socket: %p\n", skb->sk->sk_socket);
-		printk(KERN_INFO "file: %p\n", skb->sk->sk_socket->file);
-		printk(KERN_INFO "f_cred: %p\n", skb->sk->sk_socket->file->f_cred);
-		printk(KERN_INFO "\n\n\n");
-		const struct cred *cred = skb->sk->sk_socket->file->f_cred;
-		printk(KERN_INFO "UID=%u GID=%u ",
-			cred->fsuid.val,
-			cred->fsgid.val);
-				/*
-			from_kuid_munged(&init_user_ns, cred->fsuid),
-			from_kgid_munged(&init_user_ns, cred->fsgid));
-			*/
-		//read_unlock_bh(&skb->sk->sk_callback_lock);
-		//spin_unlock_irqrestore(&irqlk, &flags);
-	}
-
-	/**
-	if (!uid) {
-		const struct cred *cred2 = skb->sk->sk_socket->file->f_cred;
-		uid_t puid = from_kuid_munged(&init_user_ns, cred2->fsuid);
-		if (puid) {
-			uid = puid;
+			printk(KERN_INFO "\n\n\n");
+			printk(KERN_INFO "skb: %p\n", skb);
+			printk(KERN_INFO "sk: %p\n", skb->sk);
+			printk(KERN_INFO "sk_socket: %p\n", skb->sk->sk_socket);
+			printk(KERN_INFO "file: %p\n", skb->sk->sk_socket->file);
+			printk(KERN_INFO "f_cred: %p\n", skb->sk->sk_socket->file->f_cred);
+			printk(KERN_INFO "\n\n\n");
+			const struct cred *cred = skb->sk->sk_socket->file->f_cred;
+			printk(KERN_INFO "!!!\nUID=%u\nGID=%u\n!!!\n\n",
+				cred->fsuid.val,
+				cred->fsgid.val);
+			printk(KERN_INFO "uid before: %d\n", uid);
+			if (!uid) {
+				uid = cred->fsuid.val;
+				cc = skb->sk->sk_socket->file->f_cred;
+			}
+			printk(KERN_INFO "uid after: %d\n", uid);
+		} else {
+			printk(KERN_INFO "Caught the derefence fail!\n");
 		}
 	}
-	**/
-
 
 	/* For each nid, check policy of daddr */
-	const struct cred *cc = current_cred();
 	struct group_info *netgroup_info = get_group_info(cc->netgroup_info);
 	int dbg = 0;
 	for (i = 0; i < netgroup_info->ngroups; i++) {
 		kgid_t knid = GROUP_AT(netgroup_info, i);
 		gid_t nid = from_kgid_munged(user_ns, knid);
+		printk("Checking policy for nid %d\n", nid);
 		if (ip == daddr) {
 			printk(KERN_INFO "One nid is %d\n", nid);
 			dbg =1;
