@@ -1,5 +1,5 @@
-#ifndef _SETPOLICY_H_
-#define _SETPOLICY_H_
+#ifndef _POLICY_SYSFILE_H_
+#define _POLICY_SYSFILE_H_
 
 #include <linux/types.h>
 #include <linux/device.h>
@@ -19,4 +19,4 @@ static dev_t device_nums;
 struct device *sysfs_device;
 static struct class *device_class;
 
-#endif /* _SETPOLICY_H_ */
+#endif /* _POLICY_SYSFILE_H_ */

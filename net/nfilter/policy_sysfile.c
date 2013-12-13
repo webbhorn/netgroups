@@ -16,7 +16,7 @@
 #include <asm/uaccess.h>
 
 #include "ngpolicy.h"
-#include "set_policy.h"
+#include "policy_sysfile.h"
 
 // String constants
 const char * set_prefix = "set";
