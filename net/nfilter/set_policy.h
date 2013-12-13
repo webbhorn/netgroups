@@ -3,9 +3,8 @@
 
 #include <linux/types.h>
 #include <linux/device.h>
-#include <linux/cdev.h>
 
-#define PROG_NAME "set_policy"
+#define PROG_NAME "policy_mod"
 #define CLASS_NAME "nfilter_policies"
 #define MAX_IPs 64
 #define MAX_NIDs 16
