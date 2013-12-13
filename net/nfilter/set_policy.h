@@ -19,6 +19,5 @@ extern const char* mode_whitelist;
 static dev_t device_nums;
 struct device *sysfs_device;
 static struct class *device_class;
-static struct cdev *policy_cdev;
 
 #endif /* _SETPOLICY_H_ */
