@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
     exit(-1);
   }
 
-  execv(argv[2], &argv[2]);
+  execvp(argv[2], &argv[2]);
 
   return 0;
 }
